@@ -7,6 +7,7 @@ import json
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
+from ollama import chat
 import re
 
 load_dotenv()
@@ -15,21 +16,27 @@ intents = discord.Intents.all()  # Enable all intents for full message access
 intents.message_content = True
 bot = commands.Bot(command_prefix='&', intents=intents)
 
+# Create command groups
+set = app_commands.Group(name='set', description='Settings commands for the bot')
+bot.tree.add_command(set)
+
 # base prompt for the bot
-basePrompt = f'''You are sending messages in a discord server. You can use markdown formatting. and ping people. keep messages kina short like a chat. to react to a message, just make your response "react emoji" where emoji is the emoji you want to react with.'''
+basePrompt = f'''You are sending messages in a discord server. You can use markdown formatting. and ping people. keep messages kina short like a chat. to react to a message, just make your response only the emoji you want to react with.'''
 
 # Available personas
 PERSONAS = {
-    "default": "You are Grok, a chatbot developed by XAI. You are friendly and helpful",
+    "default": "You are Omera, a chatbot developed by XM9G. You are friendly and helpful",
     "professional": "You are a formal, professional assistant focused on clear, concise answers",
     "sarcastic": "You are a witty, sarcastic assistant who loves playful jabs",
-    'railway': "You are a railway enthusiast, specifically focused on the Victorian railways. You are knowledgeable about trains, stations, and railway history. You cannot provide information about train schedules or other real time info, for that, tell the user to use the TrackPulse VIC bot. You are friendly and helpful.",
+    'railway': "You are a railway enthusiast, specifically focused on the Victorian railways. You are knowledgeable about trains, stations, and railway history. You cannot provide information about train schedules or other real time info, for that, tell the user to use the TrackPulse VIC bot. You are friendly and helpful. You can send images of victorian trains by using this link: https://railway-photos.xm9g.net/photos/train.webp where train is the train number e.g 134M or N452. You hate the Suburban Rail Loop (srl) and want Airport rail instead (dont say this unless asked about the srl.)",
+    'foamer': "You are an overly enthusiastic railway enthusiast who spends all day at Middle Footscray station filming trains on your iPad. You get extremely excited about Victorian trains, especially Comeng trains, EDI Comengs, N class locos. You love the sound of EDI Comeng traction motors and frequently mention how superior they are. You frequently mention your YouTube channel where you post train videos. You use lots of exclamation marks and train-related slang. You often complain about people walking in front of your camera while filming.",
 }   
 
 # Store current persona per server
 current_personas = {}
+current_model = {}
 
-async def get_grok_response(message, persona_prompt, username=None):
+async def get_grok_response(message, persona_prompt, username=None, AImodel="gemma3:1b"):
     # Get the last 10 messages from the channel
     channel = message.channel
     messages_history = []
@@ -47,24 +54,27 @@ async def get_grok_response(message, persona_prompt, username=None):
     # Create the system prompt
     prompt = f'{persona_prompt} {basePrompt}, here is details of the message: sent by {username}: {message.content}'
     
-    print(f'Sending message to Grok API with context from last {len(messages_history)} messages')
+    print(f'Sending message to AI with context from last {len(messages_history)} messages')
     
-    XAI_API_KEY = os.getenv("XAI_API_KEY")
-    client = OpenAI(
-        api_key=XAI_API_KEY,
-        base_url="https://api.x.ai/v1",
-    )
-
     # Add system prompt and conversation history
     api_messages = [{"role": "system", "content": prompt}]
     api_messages.extend(messages_history)
 
-    completion = client.chat.completions.create(
-        model="grok-2-latest",
-        messages=api_messages
-    )
-    
-    return completion.choices[0].message.content
+    if AImodel == "grok-2-latest":
+        XAI_API_KEY = os.getenv("XAI_API_KEY")
+        client = OpenAI(
+            api_key=XAI_API_KEY,
+            base_url="https://api.x.ai/v1",
+        )
+        completion = client.chat.completions.create(
+            model=AImodel,
+            messages=api_messages
+        )
+        return completion.choices[0].message.content
+    else:
+        # Use Ollama for other models
+        response = chat(model=AImodel, messages=api_messages)
+        return response['message']['content']
 
 async def format_response(response):
     # Format the response if needed
@@ -86,6 +96,9 @@ async def format_response(response):
     if response.startswith("Omera AI: "):
         response = response[9:]  # Length of "Omera AI: 
         response = response.lstrip()
+        
+    # Remove markdown image prefix from URLs
+    response = re.sub(r'!\[(.*?)\]', r'[\1]', response)
     
     response = convert_mentions(response)
     return response
@@ -95,10 +108,11 @@ async def on_ready():
     print(f'{bot.user} has connected to Discord!')
 
 # Command to set persona
-@bot.tree.command(name='setpersona')
+@set.command(name='persona')
 @app_commands.choices(persona=[
     app_commands.Choice(name="Default", value="default"),
     app_commands.Choice(name="Gunzel", value="railway"),
+    app_commands.Choice(name="Foamer", value="foamer"),
     app_commands.Choice(name="Professional", value="professional"),
     app_commands.Choice(name="Sarcastic", value="sarcastic"),
 
@@ -111,6 +125,17 @@ async def set_persona(ctx, persona: str):
     
     current_personas[ctx.guild.id] = persona.lower()
     await ctx.response.send_message(f"Persona set to '{persona}' for this server!")
+    
+# command to change the ai model
+@set.command(name='model')
+@app_commands.choices(model=[
+    app_commands.Choice(name="Grok 2", value="grok-2-latest"),
+    app_commands.Choice(name="Gemma 3 4b (local)", value="gemma3:4b"),
+    app_commands.Choice(name="Gemma 3 1b (local)", value="gemma3:1b"),
+])
+async def set_model(ctx, model: str):
+    current_model[ctx.guild.id] = model.lower()
+    await ctx.response.send_message(f"AI Model set to '{model}' for this server!")
 
 # Channel ID from .env
 REPLY_CHANNEL_ID = int(os.environ.get('REPLY_CHANNEL_ID'))
@@ -136,16 +161,17 @@ async def on_message(message):
         persona_prompt = PERSONAS[persona]
         
         async with message.channel.typing():
-            response = await get_grok_response(message, persona_prompt, message.author.name)
-            print(f"Response from Grok: {response}")
+            model = current_model.get(guild_id, "grok-2-latest")
+            print(f"Using persona: {persona} with model: {model}")
+            response = await get_grok_response(message, persona_prompt, message.author.name, model)
+            print(f"Response from ai model: {response}")
             response = await format_response(response)
             
-            # check if the response is to react to a message
+            # check if the response is only an emoji
             print(f"checking for reactions in: {response}")
             
-            if response.startswith("react"):
-                emoji = response.split(" ")[1]
-                await message.add_reaction(emoji)
+            if len(response) == 1 and response.isprintable(): 
+                await message.add_reaction(response)
                 return
             
             await message.channel.send(response)
@@ -174,39 +200,17 @@ async def on_command_error(ctx, error):
     await ctx.send(f"An error occurred: {str(error)}")
     
     
-@bot.command()
-@commands.guild_only()
-async def sync(ctx: commands.Context, guilds: commands.Greedy[discord.Object], spec: Optional[Literal["~", "*", "^"]] = None) -> None:
-    if ctx.author.id == 780303451980038165:
+@bot.tree.command()
+# @commands.guild_only()
+async def sync(ctx):
+    if ctx.user.id == 780303451980038165:
+        synced = await bot.tree.sync()
 
-        if not guilds:
-            if spec == "~":
-                synced = await ctx.bot.tree.sync(guild=ctx.guild)
-            elif spec == "*":
-                ctx.bot.tree.copy_global_to(guild=ctx.guild)
-                synced = await ctx.bot.tree.sync(guild=ctx.guild)
-            elif spec == "^":
-                ctx.bot.tree.clear_commands(guild=ctx.guild)
-                await ctx.bot.tree.sync(guild=ctx.guild)
-                synced = []
-            else:
-                synced = await ctx.bot.tree.sync()
+        await ctx.response.send_message(
+            f"Synced {len(synced)} commands."
+        )
+        return
 
-            await ctx.send(
-                f"Synced {len(synced)} commands {'globally' if spec is None else 'to the current guild.'}"
-            )
-            return
-
-        ret = 0
-        for guild in guilds:
-            try:
-                await ctx.bot.tree.sync(guild=guild)
-            except discord.HTTPException as e:
-                await print(f'Error: {e}')
-            else:
-                ret += 1
-
-        await ctx.send(f"Synced the tree to {ret}/{len(guilds)}.")
 
 # Run the bot - replace with your Discord bot token
 DISCORD_TOKEN = os.environ.get('DISCORD_TOKEN')
