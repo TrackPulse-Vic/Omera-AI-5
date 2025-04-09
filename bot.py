@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from ollama import chat
 import re
+from concurrent.futures import ThreadPoolExecutor
+import asyncio
 
 load_dotenv()
 
@@ -36,7 +38,27 @@ PERSONAS = {
 current_personas = {}
 current_model = {}
 
-async def get_grok_response(message, persona_prompt, username=None, AImodel="gemma3:1b"):
+# Create a ThreadPoolExecutor
+executor = ThreadPoolExecutor(max_workers=4)
+
+async def get_grok_response(message, persona_prompt, username=None, AImodel="gemma3:1b", image_url=None):
+    # if theres an image download it
+    if image_url:
+        print(f"Downloading image from {image_url}")
+        async with aiohttp.ClientSession() as session:
+            async with session.get(image_url) as response:
+                if response.status == 200:
+                    os.makedirs('storedimages', exist_ok=True)
+                    filename = f'storedimages/{hash(image_url)}.jpg'
+                    with open(filename, 'wb') as f:
+                        f.write(await response.read())
+                    print(f"Image saved as {filename}")
+                else:
+                    print(f"Failed to download image: {response.status}")
+        # set the model to a vision model
+        AImodel = "gemma3:4b"
+        print(f"Using vision model for response: {AImodel}")
+    
     # Get the last 10 messages from the channel
     channel = message.channel
     messages_history = []
@@ -48,7 +70,8 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gem
         role = "assistant" if msg.author == message.guild.me else "user"
         messages_history.insert(0, {
             "role": role,
-            "content": f"{msg.author.name}: {msg.content}"
+            "content": f"{msg.author.name}: {msg.content}",
+            "images": [filename] if image_url else None,
         })
 
     # Create the system prompt
@@ -60,21 +83,32 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gem
     api_messages = [{"role": "system", "content": prompt}]
     api_messages.extend(messages_history)
 
+    # Run AI generation in executor
     if AImodel == "grok-2-latest":
         XAI_API_KEY = os.getenv("XAI_API_KEY")
         client = OpenAI(
             api_key=XAI_API_KEY,
             base_url="https://api.x.ai/v1",
         )
-        completion = client.chat.completions.create(
-            model=AImodel,
-            messages=api_messages
+        completion = await asyncio.get_event_loop().run_in_executor(
+            executor,
+            lambda: client.chat.completions.create(
+                model=AImodel,
+                messages=api_messages
+            )
         )
         return completion.choices[0].message.content
     else:
         # Use Ollama for other models
-        response = chat(model=AImodel, messages=api_messages)
-        return response['message']['content']
+        try:
+            response = await asyncio.get_event_loop().run_in_executor(
+                executor,
+                lambda: chat(model=AImodel, messages=api_messages)
+            )
+            return response['message']['content']
+        except Exception as e:
+            print(f"Error communicating with Ollama: {e}")
+            return "Sorry, I'm having trouble connecting to my AI backend. Please try again later or use a different model."
 
 async def format_response(response):
     # Format the response if needed
@@ -99,6 +133,9 @@ async def format_response(response):
         
     # Remove markdown image prefix from URLs
     response = re.sub(r'!\[(.*?)\]', r'[\1]', response)
+    
+    # Remove anything within <think></think> tags
+    response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL)
     
     response = convert_mentions(response)
     return response
@@ -130,8 +167,10 @@ async def set_persona(ctx, persona: str):
 @set.command(name='model')
 @app_commands.choices(model=[
     app_commands.Choice(name="Grok 2", value="grok-2-latest"),
-    app_commands.Choice(name="Gemma 3 4b (local)", value="gemma3:4b"),
-    app_commands.Choice(name="Gemma 3 1b (local)", value="gemma3:1b"),
+    app_commands.Choice(name="Deepseek R1 1.4b (Thinking) (Local) (Very Slow but good)", value="deepseek-r1:1.5b"),
+    app_commands.Choice(name="Deepseek R1 14b (Thinking) (Local)", value="deepseek-r1:14b"),
+    app_commands.Choice(name="Gemma 3 4b (local) (faster but bad)", value="gemma3:4b"),
+    app_commands.Choice(name="Gemma 3 1b (local) (faster but badder)", value="gemma3:1b"),
 ])
 async def set_model(ctx, model: str):
     current_model[ctx.guild.id] = model.lower()
@@ -163,7 +202,7 @@ async def on_message(message):
         async with message.channel.typing():
             model = current_model.get(guild_id, "grok-2-latest")
             print(f"Using persona: {persona} with model: {model}")
-            response = await get_grok_response(message, persona_prompt, message.author.name, model)
+            response = await get_grok_response(message, persona_prompt, message.author.name, model,message.attachments[0].url if message.attachments else None)
             print(f"Response from ai model: {response}")
             response = await format_response(response)
             
@@ -198,7 +237,7 @@ async def list_personas(ctx):
 @bot.event
 async def on_command_error(ctx, error):
     await ctx.send(f"An error occurred: {str(error)}")
-    
+
     
 @bot.tree.command()
 # @commands.guild_only()
@@ -210,6 +249,7 @@ async def sync(ctx):
             f"Synced {len(synced)} commands."
         )
         return
+    
 
 
 # Run the bot - replace with your Discord bot token
