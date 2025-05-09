@@ -23,7 +23,7 @@ set = app_commands.Group(name='set', description='Settings commands for the bot'
 bot.tree.add_command(set)
 
 # base prompt for the bot
-basePrompt = f'''You are sending messages in a discord server. You can use markdown formatting. and ping people. keep messages kina short like a chat. to react to a message, just make your response only the emoji you want to react with.'''
+basePrompt = f'''You are sending messages in a discord server. You can use markdown formatting. and ping people. keep messages kina short like a chat. to react to a message, just make your response only the emoji you want to react with. You can make an embed using discord.py code in a codeblock for example: `embed=discord.Embed(title="Title", description="Description")\nembed.add_field(name='name', value='text')`, do not put import discord. Use embeds to convey information such as comparison tables, or to make the message look better. You can also use images in embeds. Put the code at the end of the message'''
 
 # Available personas
 PERSONAS = {
@@ -41,7 +41,7 @@ current_model = {}
 # Create a ThreadPoolExecutor
 executor = ThreadPoolExecutor(max_workers=4)
 
-async def get_grok_response(message, persona_prompt, username=None, AImodel="gemma3:1b", image_url=None):
+async def get_grok_response(message, persona_prompt, username=None, AImodel="grok-3-mini-beta", image_url=None):
     # if theres an image download it
     if image_url:
         print(f"Downloading image from {image_url}")
@@ -56,7 +56,7 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gem
                 else:
                     print(f"Failed to download image: {response.status}")
         # set the model to a vision model
-        AImodel = "gemma3:4b"
+        AImodel = "gemma3:12b"
         print(f"Using vision model for response: {AImodel}")
     
     # Get the last 10 messages from the channel
@@ -84,7 +84,7 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gem
     api_messages.extend(messages_history)
 
     # Run AI generation in executor
-    if AImodel == "grok-2-latest":
+    if AImodel == 'grok-3-mini-beta':
         XAI_API_KEY = os.getenv("XAI_API_KEY")
         client = OpenAI(
             api_key=XAI_API_KEY,
@@ -94,9 +94,12 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gem
             executor,
             lambda: client.chat.completions.create(
                 model=AImodel,
-                messages=api_messages
+                messages=api_messages,
+                reasoning_effort="high",
+                temperature=0.7,
             )
         )
+        print(f'Thinking:\n {completion.choices[0].message.reasoning_content}')
         return completion.choices[0].message.content
     else:
         # Use Ollama for other models
@@ -139,6 +142,24 @@ async def format_response(response):
     
     response = convert_mentions(response)
     return response
+
+async def read_embeds(message):
+    code_block = re.search(r'```(?:python)?\n([\s\S]*?)```', message)
+    if not code_block:  
+        return None, message
+    code = code_block.group(1)
+    local_vars = {'discord': discord}
+    try:
+        exec(code, {}, local_vars)
+    except Exception as e:
+        print(f"Error making embed from code: {e}")
+        return None, message
+    if 'embed' not in local_vars:
+        print("Code did not define an 'embed' variable.")
+        return None, message
+    # return message without the code block
+    message = re.sub(r'```(?:python)?\n[\s\S]*?```', '', message)
+    return local_vars['embed'], message.strip()
             
 @bot.event
 async def on_ready():
@@ -166,6 +187,7 @@ async def set_persona(ctx, persona: str):
 # command to change the ai model
 @set.command(name='model')
 @app_commands.choices(model=[
+    app_commands.Choice(name="Grok 3 Mini (Thinking)", value="grok-3-mini-beta"),
     app_commands.Choice(name="Grok 2", value="grok-2-latest"),
     app_commands.Choice(name="Deepseek R1 1.4b (Thinking) (Local) (Very Slow but good)", value="deepseek-r1:1.5b"),
     app_commands.Choice(name="Deepseek R1 14b (Thinking) (Local)", value="deepseek-r1:14b"),
@@ -200,20 +222,20 @@ async def on_message(message):
         persona_prompt = PERSONAS[persona]
         
         async with message.channel.typing():
-            model = current_model.get(guild_id, "grok-2-latest")
+            model = current_model.get(guild_id, "grok-3-mini-beta")
             print(f"Using persona: {persona} with model: {model}")
             response = await get_grok_response(message, persona_prompt, message.author.name, model,message.attachments[0].url if message.attachments else None)
             print(f"Response from ai model: {response}")
             response = await format_response(response)
-            
+            embed, response = await read_embeds(response)
             # check if the response is only an emoji
-            print(f"checking for reactions in: {response}")
+            print(f"checking for reactions in response...")
             
             if len(response) == 1 and response.isprintable(): 
                 await message.add_reaction(response)
                 return
             
-            await message.channel.send(response)
+            await message.channel.send(response, embed=embed if embed else None)
 
     # Process commands (needed to keep commands working)
     await bot.process_commands(message)
