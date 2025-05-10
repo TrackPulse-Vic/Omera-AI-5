@@ -23,7 +23,7 @@ set = app_commands.Group(name='set', description='Settings commands for the bot'
 bot.tree.add_command(set)
 
 # base prompt for the bot
-basePrompt = f'''You are sending messages in a discord server. You can use markdown formatting. and ping people. keep messages kina short like a chat. to react to a message, just make your response only the emoji you want to react with. You can make an embed using discord.py code in a codeblock for example: `embed=discord.Embed(title="Title", description="Description")\nembed.add_field(name='name', value='text')`, do not put import discord. Use embeds to convey information such as comparison tables, or to make the message look better. You can also use images in embeds. Put the code at the end of the message'''
+basePrompt = f'''You are sending messages in a discord server. You can use markdown formatting. and ping people. keep messages kina short like a chat. to react to a message, just make your response only the emoji you want to react with. You can make an embed using discord.py code in a codeblock for example: `embed=discord.Embed(title="Title", description="Description")\nembed.add_field(name='name', value='text')`, do not put import discord. Use embeds to convey information such as comparison tables, or to make the message look better but don't use it all the time. You can also use images in embeds. Put the code at the end of the message'''
 
 # Available personas
 PERSONAS = {
@@ -149,6 +149,7 @@ async def read_embeds(message):
         return None, message
     code = code_block.group(1)
     local_vars = {'discord': discord}
+    code = "\n".join(line for line in code.splitlines() if line.strip().startswith("embed"))    # remove non embed code lines
     try:
         exec(code, {}, local_vars)
     except Exception as e:
@@ -240,7 +241,6 @@ async def on_message(message):
     # Process commands (needed to keep commands working)
     await bot.process_commands(message)
 
-# # Keep the chat command for other channels
 # @bot.command(name='chat')
 # async def chat(ctx, *, message):
 #     guild_id = ctx.guild.id
