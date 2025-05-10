@@ -12,7 +12,12 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
 
+from ai_utils import *
+
 load_dotenv()
+
+# Channel ID from .env
+REPLY_CHANNEL_IDS = os.environ.get('REPLY_CHANNEL_ID').split(',')
 
 intents = discord.Intents.all()  # Enable all intents for full message access
 intents.message_content = True
@@ -23,7 +28,7 @@ set = app_commands.Group(name='set', description='Settings commands for the bot'
 bot.tree.add_command(set)
 
 # base prompt for the bot
-basePrompt = f'''You are sending messages in a discord server. You can use markdown formatting. and ping people. keep messages kina short like a chat. to react to a message, just make your response only the emoji you want to react with. You can make an embed using discord.py code in a codeblock for example: `embed=discord.Embed(title="Title", description="Description")\nembed.add_field(name='name', value='text')`, do not put import discord. Use embeds to convey information such as comparison tables, or to make the message look better but don't use it all the time. You can also use images in embeds. Put the code at the end of the message'''
+basePrompt = f'''You are sending messages in a discord server. You can use markdown formatting. and ping people. keep messages kina short like a chat. to react to a message, just make your response only the emoji you want to react with. You can make an embed using discord.py code in a codeblock for example: `embed=discord.Embed(title="Title", description="Description")\nembed.add_field(name='name', value='text')`, do not put import discord. Use embeds to convey information such as comparison tables, or to make the message look better but don't use it all the time. You can't use codeblocks in embeds. You can also use images in embeds. Put the code at the end of the message'''
 
 # Available personas
 PERSONAS = {
@@ -44,20 +49,13 @@ executor = ThreadPoolExecutor(max_workers=4)
 async def get_grok_response(message, persona_prompt, username=None, AImodel="grok-3-mini-beta", image_url=None):
     # if theres an image download it
     if image_url:
-        print(f"Downloading image from {image_url}")
-        async with aiohttp.ClientSession() as session:
-            async with session.get(image_url) as response:
-                if response.status == 200:
-                    os.makedirs('storedimages', exist_ok=True)
-                    filename = f'storedimages/{hash(image_url)}.jpg'
-                    with open(filename, 'wb') as f:
-                        f.write(await response.read())
-                    print(f"Image saved as {filename}")
-                else:
-                    print(f"Failed to download image: {response.status}")
+        print(f"Understanding image: {image_url}")
         # set the model to a vision model
-        AImodel = "gemma3:12b"
+        AImodel = "grok-2-vision-latest"
+        useImageReader = True
         print(f"Using vision model for response: {AImodel}")
+    else:
+        useImageReader = False
     
     # Get the last 10 messages from the channel
     channel = message.channel
@@ -67,11 +65,11 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
         if msg.content.startswith('&'):
             continue
         
-        role = "assistant" if msg.author == message.guild.me else "user"
+        role = 'assistant' if message.author == bot.user else 'user'  # Safer for all cases, no guild needed
         messages_history.insert(0, {
             "role": role,
             "content": f"{msg.author.name}: {msg.content}",
-            "images": [filename] if image_url else None,
+            "images": [image_url] if image_url else None,
         })
 
     # Create the system prompt
@@ -83,8 +81,13 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
     api_messages = [{"role": "system", "content": prompt}]
     api_messages.extend(messages_history)
 
+    # use image reading ai model
+    if useImageReader:
+        response = await understantImage(image_url, message.content, AImodel, username)
+        return response
+
     # Run AI generation in executor
-    if AImodel == 'grok-3-mini-beta':
+    elif AImodel == 'grok-3-mini-beta':
         XAI_API_KEY = os.getenv("XAI_API_KEY")
         client = OpenAI(
             api_key=XAI_API_KEY,
@@ -183,7 +186,7 @@ async def set_persona(ctx, persona: str):
         return
     
     current_personas[ctx.guild.id] = persona.lower()
-    await ctx.response.send_message(f"Persona set to '{persona}' for this server!")
+    await ctx.response.send_message(f"Persona set to '{persona}' for this channel!")
     
 # command to change the ai model
 @set.command(name='model')
@@ -197,10 +200,23 @@ async def set_persona(ctx, persona: str):
 ])
 async def set_model(ctx, model: str):
     current_model[ctx.guild.id] = model.lower()
-    await ctx.response.send_message(f"AI Model set to '{model}' for this server!")
+    await ctx.response.send_message(f"AI Model set to '{model}' for this channel!")
 
-# Channel ID from .env
-REPLY_CHANNEL_ID = int(os.environ.get('REPLY_CHANNEL_ID'))
+# image generator command
+@bot.tree.command(name='draw')
+async def draw(ctx,prompt:str):
+    await ctx.response.defer()
+    print(f"Received draw command with prompt: {prompt}")
+    try:
+        # Call the image generation function
+        response, revisedPrompt = await generateImage(prompt)
+        embed = discord.Embed(title=f"Here is your image:", description=revisedPrompt)
+        embed.set_image(url=response)
+        embed.set_footer(text=f'Original prompt: {prompt}')
+        await ctx.followup.send(ctx.user.mention,embed=embed)
+    except Exception as e:
+        print(f"Error generating image: {e}")
+        await ctx.followup.send("Sorry, I couldn't generate the image. Please try again later.")
 
 # Event handler for all messages
 @bot.event
@@ -213,17 +229,17 @@ async def on_message(message):
     #     return
     
     # Debug print to check all incoming messages
-    print(f"Message received - Channel ID: {message.channel.id}, Expected ID: {REPLY_CHANNEL_ID}")
+    print(f"Message received - Channel ID: {message.channel.id}, Expected IDs: {REPLY_CHANNEL_IDS}")
     
     # Check if message is in the specified channel
-    if message.channel.id == REPLY_CHANNEL_ID:
+    if str(message.channel.id) in REPLY_CHANNEL_IDS:
         print(f"Received message: {message.content} from {message.author}")
-        guild_id = message.guild.id
-        persona = current_personas.get(guild_id, "default")  # Default to default
+        channel_id = message.channel.id
+        persona = current_personas.get(channel_id, "default")  # Default to default
         persona_prompt = PERSONAS[persona]
         
         async with message.channel.typing():
-            model = current_model.get(guild_id, "grok-3-mini-beta")
+            model = current_model.get(channel_id, "grok-3-mini-beta")
             print(f"Using persona: {persona} with model: {model}")
             response = await get_grok_response(message, persona_prompt, message.author.name, model,message.attachments[0].url if message.attachments else None)
             print(f"Response from ai model: {response}")
