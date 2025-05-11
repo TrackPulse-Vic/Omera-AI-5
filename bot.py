@@ -14,6 +14,7 @@ import asyncio
 
 from ai_utils import *
 from functions.images import getImage
+from functions.trainInfo import trainData
 
 load_dotenv()
 
@@ -52,6 +53,23 @@ TRAIN_IMAGE_TOOL = {
                 "number": {
                     "type": "string",
                     "description": "The train number to get an image of. e.g 134M or N452",
+                }
+            },
+            "required": ["number"]
+        }
+    }
+}
+TRAIN_INFO_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "train_info",
+        "description": "Get info about a Melbourne/Victorian train",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "number": {
+                    "type": "string",
+                    "description": "The train number e.g 134M or N452 or 9069, For metro trains, here are what numbers are for what types: M: 301 - 468, 471 - 554 - Train type: edi comeng, M: 561 - 680 - Train type: alstom comeng, M: 701 - 844 - Train type: siemens, M: 1 - 288, 851 - 986 - Train type: xtrapolis, M: 9001 - 9070 - Train type: hcmt",
                 }
             },
             "required": ["number"]
@@ -115,7 +133,7 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
             lambda: client.chat.completions.create(
                 model=AImodel,
                 messages=api_messages,
-                tools=[TRAIN_IMAGE_TOOL],  # Add tools here
+                tools=[TRAIN_IMAGE_TOOL, TRAIN_INFO_TOOL],  # Add tools here
                 tool_choice="auto",
                 reasoning_effort="high",
                 temperature=0.7,
@@ -149,6 +167,29 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
                         )
                     )
                     return final_completion.choices[0].message.content
+                if tool_call.function.name == "train_info":
+                    # Parse function arguments
+                    args = json.loads(tool_call.function.arguments)
+                    number = args.get("number")
+                    # Call the actual function
+                    train_info_data = trainData(number)
+                    # Send the result back to Grok for final response
+                    api_messages.append({
+                        "role": "function",
+                        "name": "train_info",
+                        "content": str(train_info_data)
+                    })
+                    final_completion = await asyncio.get_event_loop().run_in_executor(
+                        executor,
+                        lambda: client.chat.completions.create(
+                            model=AImodel,
+                            messages=api_messages,
+                            reasoning_effort="high",
+                            temperature=0.7,
+                        )
+                    )
+                    return final_completion.choices[0].message.content
+
         else:
             return message.content
     else:
