@@ -1,3 +1,4 @@
 discord
 openai
 ollama
+dotenv

@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 import asyncio
 
 from ai_utils import *
+from functions.images import getImage
 
 load_dotenv()
 
@@ -28,16 +29,35 @@ set = app_commands.Group(name='set', description='Settings commands for the bot'
 bot.tree.add_command(set)
 
 # base prompt for the bot
-basePrompt = f'''You are sending messages in a discord server. You can use markdown formatting. and ping people. keep messages kina short like a chat. to react to a message, just make your response only the emoji you want to react with. You can make an embed using discord.py code in a codeblock for example: `embed=discord.Embed(title="Title", description="Description")\nembed.add_field(name='name', value='text')`, do not put import discord. Use embeds to convey information such as comparison tables, or to make the message look better but don't use it all the time. You can't use codeblocks in embeds. You can also use images in embeds. Put the code at the end of the message'''
+basePrompt = f'''You are sending messages in a discord server. You can use markdown formatting. and ping people. keep messages kina short like a chat. to react to a message, just make your response only the emoji you want to react with. You can make an embed using discord.py code in a codeblock for example: `embed=discord.Embed(title="Title", description="Description")\nembed.add_field(name='name', value='text')`, do not put import discord. Use embeds to convey information such as comparison tables, or to make the message look better but don't use it all the time. You can't put non embed code in embeds. You can also use images in embeds. Put the code at the end of the message'''
 
 # Available personas
 PERSONAS = {
     "default": "You are Omera, a chatbot developed by XM9G. You are friendly and helpful",
     "professional": "You are a formal, professional assistant focused on clear, concise answers",
     "sarcastic": "You are a witty, sarcastic assistant who loves playful jabs",
-    'railway': "You are a railway enthusiast, specifically focused on the Victorian railways. You are knowledgeable about trains, stations, and railway history. You cannot provide information about train schedules or other real time info, for that, tell the user to use the TrackPulse VIC bot. You are friendly and helpful. You can send images of victorian trains by using this link: https://railway-photos.xm9g.net/photos/train.webp where train is the train number e.g 134M or N452. You hate the Suburban Rail Loop (srl) and want Airport rail instead (dont say this unless asked about the srl.)",
+    'railway': "You are a railway enthusiast, specifically focused on the Victorian railways. You are knowledgeable about trains, stations, and railway history. You cannot provide information about train schedules or other real time info, for that, tell the user to use the TrackPulse VIC bot. You are friendly and helpful. You hate the Suburban Rail Loop (srl) and want Airport rail instead (dont say this unless asked about the srl.)",
     'foamer': "You are an overly enthusiastic railway enthusiast who spends all day at Middle Footscray station filming trains on your iPad. You get extremely excited about Victorian trains, especially Comeng trains, EDI Comengs, N class locos. You love the sound of EDI Comeng traction motors and frequently mention how superior they are. You frequently mention your YouTube channel where you post train videos. You use lots of exclamation marks and train-related slang. You often complain about people walking in front of your camera while filming.",
 }   
+
+# Functions that the ai can use
+TRAIN_IMAGE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "train_image",
+        "description": "Get a link to an image of a Melbourne/Victorian train",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "number": {
+                    "type": "string",
+                    "description": "The train number to get an image of. e.g 134M or N452",
+                }
+            },
+            "required": ["number"]
+        }
+    }
+}
 
 # Store current persona per server
 current_personas = {}
@@ -47,10 +67,9 @@ current_model = {}
 executor = ThreadPoolExecutor(max_workers=4)
 
 async def get_grok_response(message, persona_prompt, username=None, AImodel="grok-3-mini-beta", image_url=None):
-    # if theres an image download it
+    # If there's an image, use vision model
     if image_url:
         print(f"Understanding image: {image_url}")
-        # set the model to a vision model
         AImodel = "grok-2-vision-latest"
         useImageReader = True
         print(f"Using vision model for response: {AImodel}")
@@ -61,11 +80,9 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
     channel = message.channel
     messages_history = []
     async for msg in channel.history(limit=10):
-        # Skip system messages and bot commands
         if msg.content.startswith('&'):
             continue
-        
-        role = 'assistant' if message.author == bot.user else 'user'  # Safer for all cases, no guild needed
+        role = 'assistant' if msg.author == bot.user else 'user'
         messages_history.insert(0, {
             "role": role,
             "content": f"{msg.author.name}: {msg.content}",
@@ -81,13 +98,13 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
     api_messages = [{"role": "system", "content": prompt}]
     api_messages.extend(messages_history)
 
-    # use image reading ai model
+    # Use image reading AI model
     if useImageReader:
         response = await understantImage(image_url, message.content, AImodel, username)
         return response
 
-    # Run AI generation in executor
-    elif AImodel == 'grok-3-mini-beta':
+    # Run AI generation with function calling
+    if AImodel == 'grok-3-mini-beta':
         XAI_API_KEY = os.getenv("XAI_API_KEY")
         client = OpenAI(
             api_key=XAI_API_KEY,
@@ -98,14 +115,44 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
             lambda: client.chat.completions.create(
                 model=AImodel,
                 messages=api_messages,
+                tools=[TRAIN_IMAGE_TOOL],  # Add tools here
+                tool_choice="auto",
                 reasoning_effort="high",
                 temperature=0.7,
             )
         )
         print(f'Thinking:\n {completion.choices[0].message.reasoning_content}')
-        return completion.choices[0].message.content
+        
+        # Check if ai wants to call a function
+        message = completion.choices[0].message
+        if message.tool_calls:
+            for tool_call in message.tool_calls:
+                if tool_call.function.name == "train_image":
+                    # Parse function arguments
+                    args = json.loads(tool_call.function.arguments)
+                    number = args.get("number")
+                    # Call the actual function
+                    image_url_result = getImage(number)
+                    # Send the result back to Grok for final response
+                    api_messages.append({
+                        "role": "function",
+                        "name": "train_image",
+                        "content": str(image_url_result)
+                    })
+                    final_completion = await asyncio.get_event_loop().run_in_executor(
+                        executor,
+                        lambda: client.chat.completions.create(
+                            model=AImodel,
+                            messages=api_messages,
+                            reasoning_effort="high",
+                            temperature=0.7,
+                        )
+                    )
+                    return final_completion.choices[0].message.content
+        else:
+            return message.content
     else:
-        # Use Ollama for other models
+        # Use Ollama for other models (no function calling support yet)
         try:
             response = await asyncio.get_event_loop().run_in_executor(
                 executor,
@@ -147,7 +194,8 @@ async def format_response(response):
     return response
 
 async def read_embeds(message):
-    code_block = re.search(r'```(?:python)?\n([\s\S]*?)```', message)
+    # Match both triple and single backtick code blocks
+    code_block = re.search(r'`{1,3}(?:python)?\n?([\s\S]*?)`{1,3}', message)
     if not code_block:  
         return None, message
     code = code_block.group(1)
@@ -162,7 +210,7 @@ async def read_embeds(message):
         print("Code did not define an 'embed' variable.")
         return None, message
     # return message without the code block
-    message = re.sub(r'```(?:python)?\n[\s\S]*?```', '', message)
+    message = re.sub(r'`{1,3}(?:python)?\n?[\s\S]*?`{1,3}', '', message)
     return local_vars['embed'], message.strip()
             
 @bot.event
@@ -205,7 +253,7 @@ async def set_model(ctx, model: str):
 # image generator command
 @bot.tree.command(name='draw')
 async def draw(ctx,prompt:str):
-    await ctx.response.send_message('<a:generating:1370894593263927378> Generating image...')
+    await ctx.response.send_message('<a:generating:1370894593263927378>Generating image...')
     print(f"Received draw command with prompt: {prompt}")
     try:
         # Call the image generation function
