@@ -205,7 +205,7 @@ async def set_model(ctx, model: str):
 # image generator command
 @bot.tree.command(name='draw')
 async def draw(ctx,prompt:str):
-    await ctx.response.defer()
+    await ctx.response.send_message('<a:generating:1370894593263927378> Generating image...')
     print(f"Received draw command with prompt: {prompt}")
     try:
         # Call the image generation function
@@ -213,10 +213,11 @@ async def draw(ctx,prompt:str):
         embed = discord.Embed(title=f"Here is your image:", description=revisedPrompt)
         embed.set_image(url=response)
         embed.set_footer(text=f'Original prompt: {prompt}')
-        await ctx.followup.send(ctx.user.mention,embed=embed)
+        await ctx.edit_original_response(content=ctx.user.mention, embed=embed)
+        # await ctx.followup.send(ctx.user.mention,embed=embed)
     except Exception as e:
         print(f"Error generating image: {e}")
-        await ctx.followup.send("Sorry, I couldn't generate the image. Please try again later.")
+        await ctx.edit_original_response(content="Sorry, I couldn't generate the image. Please try again later.")
 
 # Event handler for all messages
 @bot.event
