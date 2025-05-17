@@ -135,7 +135,7 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
                 messages=api_messages,
                 tools=[TRAIN_IMAGE_TOOL, TRAIN_INFO_TOOL],  # Add tools here
                 tool_choice="auto",
-                reasoning_effort="high",
+                reasoning_effort="low",
                 temperature=0.7,
             )
         )
@@ -274,7 +274,8 @@ async def set_persona(ctx, persona: str):
         await ctx.response.send_message(f"Invalid persona! Available options: {available}")
         return
     
-    current_personas[ctx.guild.id] = persona.lower()
+    channel_id = ctx.channel.id
+    current_personas[channel_id] = persona.lower()
     await ctx.response.send_message(f"Persona set to '{persona}' for this channel!")
     
 # command to change the ai model
