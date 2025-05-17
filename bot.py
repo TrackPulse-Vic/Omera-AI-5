@@ -33,13 +33,11 @@ bot.tree.add_command(set)
 basePrompt = f'''You are sending messages in a discord server. You can use markdown formatting. and ping people. try and mimic the users speaking style. keep messages kina short like a chat. to react to a message, just make your response only the emoji you want to react with. You can make an embed using discord.py code in a codeblock for example: `embed=discord.Embed(title="Title", description="Description")\nembed.add_field(name='name', value='text')`, do not put import discord. Use embeds to convey information such as comparison tables, or to make the message look better but don't use it all the time. You can't put non embed code in embeds. You can also use images in embeds. Put the code at the end of the message'''
 
 # Available personas
-PERSONAS = {
-    "default": "You are Omera, a chatbot developed by XM9G. You are friendly and helpful",
-    "professional": "You are a formal, professional assistant focused on clear, concise answers",
-    "sarcastic": "You are a witty, sarcastic assistant who loves playful jabs",
-    'railway': "You are a railway enthusiast, specifically focused on the Victorian railways. You are knowledgeable about trains, stations, and railway history. You cannot provide information about train schedules or other real time info, for that, tell the user to use the TrackPulse VIC bot. You are friendly and helpful. You hate the Suburban Rail Loop (srl) and want Airport rail instead (dont say this unless asked about the srl.)",
-    'foamer': "You are an overly enthusiastic railway enthusiast who spends all day at Middle Footscray station filming trains on your iPad. You get extremely excited about Victorian trains, especially Comeng trains, EDI Comengs, N class locos. You love the sound of EDI Comeng traction motors and frequently mention how superior they are. You frequently mention your YouTube channel where you post train videos. You use lots of exclamation marks and train-related slang. You often complain about people walking in front of your camera while filming.",
-}   
+# Load personas from JSON file
+with open('personas.json', 'r') as f:
+    persona_data = json.load(f)
+
+PERSONAS = {p['name']: p['prompt'] for p in persona_data['personas']}
 
 # Functions that the ai can use
 TRAIN_IMAGE_TOOL = {
@@ -266,6 +264,7 @@ async def on_ready():
     app_commands.Choice(name="Foamer", value="foamer"),
     app_commands.Choice(name="Professional", value="professional"),
     app_commands.Choice(name="Sarcastic", value="sarcastic"),
+    app_commands.Choice(name="Uncensored", value="uncensored"),
 
 ])
 async def set_persona(ctx, persona: str):
@@ -278,15 +277,15 @@ async def set_persona(ctx, persona: str):
     await ctx.response.send_message(f"Persona set to '{persona}' for this channel!")
     
 # command to change the ai model
-@set.command(name='model')
-@app_commands.choices(model=[
-    app_commands.Choice(name="Grok 3 Mini (Thinking)", value="grok-3-mini-beta"),
-    app_commands.Choice(name="Grok 2", value="grok-2-latest"),
-    app_commands.Choice(name="Deepseek R1 1.4b (Thinking) (Local) (Very Slow but good)", value="deepseek-r1:1.5b"),
-    app_commands.Choice(name="Deepseek R1 14b (Thinking) (Local)", value="deepseek-r1:14b"),
-    app_commands.Choice(name="Gemma 3 4b (local) (faster but bad)", value="gemma3:4b"),
-    app_commands.Choice(name="Gemma 3 1b (local) (faster but badder)", value="gemma3:1b"),
-])
+# @set.command(name='model')
+# @app_commands.choices(model=[
+#     app_commands.Choice(name="Grok 3 Mini (Thinking)", value="grok-3-mini-beta"),
+#     app_commands.Choice(name="Grok 2", value="grok-2-latest"),
+#     app_commands.Choice(name="Deepseek R1 1.4b (Thinking) (Local) (Very Slow but good)", value="deepseek-r1:1.5b"),
+#     app_commands.Choice(name="Deepseek R1 14b (Thinking) (Local)", value="deepseek-r1:14b"),
+#     app_commands.Choice(name="Gemma 3 4b (local) (faster but bad)", value="gemma3:4b"),
+#     app_commands.Choice(name="Gemma 3 1b (local) (faster but badder)", value="gemma3:1b"),
+# ])
 async def set_model(ctx, model: str):
     current_model[ctx.guild.id] = model.lower()
     await ctx.response.send_message(f"AI Model set to '{model}' for this channel!")
