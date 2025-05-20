@@ -15,6 +15,7 @@ import asyncio
 from ai_utils import *
 from functions.images import getImage
 from functions.trainInfo import trainData
+from memory.memory import addMemory, readMemories
 
 load_dotenv()
 
@@ -30,7 +31,7 @@ set = app_commands.Group(name='set', description='Settings commands for the bot'
 bot.tree.add_command(set)
 
 # base prompt for the bot
-basePrompt = f'''You are sending messages in a discord chat. You can talk about any topic the users bring up. You can use markdown formatting but not math formatting. and ping people. try and mimic the users speaking style. keep messages kina short like a chat. to react to a message, just make your response only the emoji you want to react with. You can make an embed using discord.py code in a codeblock for example: `embed=discord.Embed(title="Title", description="Description")\nembed.add_field(name='name', value='text')`, do not put import discord. Use embeds to convey information such as comparison tables, or to make the message look better but don't use it all the time. You can't put non embed code in embeds. You can also use images in embeds. Put the code at the end of the message'''
+basePrompt = f'''You are sending messages in a discord chat. You can talk about any topic the users bring up. You can use markdown formatting but NO math formatting. and ping people. try and mimic the users speaking style. keep messages kina short like a chat. You can store any information you think is notable in your memory. to react to a message, just make your response only the emoji you want to react with. You can make an embed using discord.py code in a codeblock for example: `embed=discord.Embed(title="Title", description="Description")\nembed.add_field(name='name', value='text')`, do not put import discord. Use embeds to convey information such as comparison tables, or to make the message look better but don't use it all the time. You can't put non embed code in embeds. You can also use images in embeds. Put the code at the end of the message'''
 
 # Available personas
 # Load personas from JSON file
@@ -75,6 +76,24 @@ TRAIN_INFO_TOOL = {
     }
 }
 
+MEMORY_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "memory",
+        "description": "Add a memory to the memory bank for this channel",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "memory": {
+                    "type": "string",
+                    "description": "What you want to remember.",
+                }
+            },
+            "required": ["memory"]
+        }
+    }
+}
+
 # Store current persona per server
 current_personas = {}
 current_model = {}
@@ -106,7 +125,8 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
         })
 
     # Create the system prompt
-    prompt = f'{persona_prompt} {basePrompt}, here is details of the message: sent by {username}: {message.content}'
+    memoryPrompt = f'You have the following memories: {readMemories(channel.id)}'
+    prompt = f'{persona_prompt} {basePrompt}, {memoryPrompt}, here is details of the message: sent by {username}: {message.content}'
     
     print(f'Sending message to AI with context from last {len(messages_history)} messages')
     
@@ -131,7 +151,7 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
             lambda: client.chat.completions.create(
                 model=AImodel,
                 messages=api_messages,
-                tools=[TRAIN_IMAGE_TOOL, TRAIN_INFO_TOOL],  # Add tools here
+                tools=[TRAIN_IMAGE_TOOL, TRAIN_INFO_TOOL, MEMORY_TOOL],  # Add tools here
                 tool_choice="auto",
                 reasoning_effort="low",
                 temperature=0.7,
@@ -187,6 +207,29 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
                         )
                     )
                     return final_completion.choices[0].message.content
+                if tool_call.function.name == "memory":
+                    # Parse function arguments
+                    args = json.loads(tool_call.function.arguments)
+                    memory = args.get("memory")
+                    # Call the actual function
+                    addMemory(memory, channel.id)
+                    # Send the result back to Grok for final response
+                    api_messages.append({
+                        "role": "function",
+                        "name": "memory",
+                        "content": str("Memory added successfully.")
+                    })
+                    final_completion = await asyncio.get_event_loop().run_in_executor(
+                        executor,
+                        lambda: client.chat.completions.create(
+                            model=AImodel,
+                            messages=api_messages,
+                            reasoning_effort="high",
+                            temperature=0.7,
+                        )
+                    )
+                    return final_completion.choices[0].message.content
+
 
         else:
             return message.content

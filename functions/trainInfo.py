@@ -23,5 +23,3 @@ def trainData(search_value):
         print(f"Error fetching CSV: {e}")
         return None
     return None
-print(
-trainData('301M'))
