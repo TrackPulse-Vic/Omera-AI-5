@@ -92,10 +92,10 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
     else:
         useImageReader = False
     
-    # Get the last 10 messages from the channel
+    # Get the last however many messages from the channel
     channel = message.channel
     messages_history = []
-    async for msg in channel.history(limit=10):
+    async for msg in channel.history(limit=50):
         if msg.content.startswith('&'):
             continue
         role = 'assistant' if msg.author == bot.user else 'user'
