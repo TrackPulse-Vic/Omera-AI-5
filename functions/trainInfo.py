@@ -17,9 +17,19 @@ def trainData(search_value):
                 train_parts = row[0].split('-')
                 if search_value in train_parts:
                     json_data = dict(zip(header, row))  # Use header for keys
+                    image_url = getImage(search_value)
+                    if image_url:
+                        json_data['image_url'] = image_url
                     return json_data
         print(f"Train {search_value} not found")
     except requests.RequestException as e:
         print(f"Error fetching CSV: {e}")
         return None
     return None
+
+def getImage(train_number):
+    image_mapping = {
+        "37417": "https://railway-photos.xm9g.net/37417.jpg",
+        "43096": "https://railway-photos.xm9g.net/43096.jpg"
+    }
+    return image_mapping.get(train_number)
