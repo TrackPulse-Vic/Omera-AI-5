@@ -19,9 +19,10 @@ def trainData(search_value):
                 train_parts = row[0].split('-')
                 if search_value in train_parts:
                     json_data = dict(zip(header, row))  # Use header for keys
-                    image_url = getImage(search_value)
-                    if image_url:
-                        json_data['image_url'] = image_url
+                    image_data = getImage(search_value)
+                    if image_data:
+                        json_data['image_url'] = image_data['url']
+                        json_data['photographer'] = image_data['photographer']
                     return json_data
         print(f"Train {search_value} not found")
     except requests.RequestException as e:
