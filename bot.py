@@ -372,7 +372,7 @@ async def on_message(message):
         persona_prompt = PERSONAS[persona]
         
         async with message.channel.typing():
-            model = current_model.get(channel_id, "grok-3")
+            model = current_model.get(channel_id, "grok-3-mini")
             print(f"Using persona: {persona} with model: {model}")
             response = await get_grok_response(message, persona_prompt, message.author.name, model,message.attachments[0].url if message.attachments else None)
             print(f"Response from ai model: {response}")
