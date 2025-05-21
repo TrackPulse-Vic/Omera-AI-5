@@ -140,7 +140,7 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
         return response
 
     # Run AI generation with function calling
-    if AImodel == 'grok-3-mini-beta':
+    if AImodel in ['grok-3-mini', 'grok-3']:
         XAI_API_KEY = os.getenv("XAI_API_KEY")
         client = OpenAI(
             api_key=XAI_API_KEY,
@@ -372,7 +372,7 @@ async def on_message(message):
         persona_prompt = PERSONAS[persona]
         
         async with message.channel.typing():
-            model = current_model.get(channel_id, "grok-3-mini-beta")
+            model = current_model.get(channel_id, "grok-3")
             print(f"Using persona: {persona} with model: {model}")
             response = await get_grok_response(message, persona_prompt, message.author.name, model,message.attachments[0].url if message.attachments else None)
             print(f"Response from ai model: {response}")
