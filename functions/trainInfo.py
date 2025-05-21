@@ -2,6 +2,8 @@ import csv
 import requests
 from io import StringIO
 
+from functions.images import getImage
+
 def trainData(search_value):
     csv_url = 'https://railway-photos.xm9g.net/trainsets.csv'
     try:
@@ -26,10 +28,3 @@ def trainData(search_value):
         print(f"Error fetching CSV: {e}")
         return None
     return None
-
-def getImage(train_number):
-    image_mapping = {
-        "37417": "https://railway-photos.xm9g.net/37417.jpg",
-        "43096": "https://railway-photos.xm9g.net/43096.jpg"
-    }
-    return image_mapping.get(train_number)
