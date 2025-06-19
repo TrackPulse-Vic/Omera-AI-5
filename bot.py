@@ -155,6 +155,7 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
                 tool_choice="auto",
                 reasoning_effort="low",
                 temperature=0.7,
+                
             )
         )
         print(f'Thinking:\n {completion.choices[0].message.reasoning_content}')
@@ -368,6 +369,7 @@ async def on_message(message):
     if str(message.channel.id) in REPLY_CHANNEL_IDS:
         print(f"Received message: {message.content} from {message.author}")
         channel_id = message.channel.id
+        message_id = message.id
         persona = current_personas.get(channel_id, "default")  # Default to default
         persona_prompt = PERSONAS[persona]
         
@@ -385,7 +387,7 @@ async def on_message(message):
                 await message.add_reaction(response)
                 return
             
-            await message.channel.send(response, embed=embed if embed else None)
+            await message.reply(response, embed=embed if embed else None, mention_author=False)
 
     # Process commands (needed to keep commands working)
     await bot.process_commands(message)
