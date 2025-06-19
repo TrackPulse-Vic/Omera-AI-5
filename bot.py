@@ -153,7 +153,7 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
                 messages=api_messages,
                 tools=[TRAIN_IMAGE_TOOL, TRAIN_INFO_TOOL, MEMORY_TOOL],  # Add tools here
                 tool_choice="auto",
-                reasoning_effort="high",
+                reasoning_effort="low",
                 temperature=0.7,
                 
             )
@@ -181,7 +181,7 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
                         lambda: client.chat.completions.create(
                             model=AImodel,
                             messages=api_messages,
-                            reasoning_effort="high",
+                            reasoning_effort="low",
                             temperature=0.7,
                         )
                     )
@@ -203,7 +203,7 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
                         lambda: client.chat.completions.create(
                             model=AImodel,
                             messages=api_messages,
-                            reasoning_effort="high",
+                            reasoning_effort="low",
                             temperature=0.7,
                         )
                     )
@@ -225,7 +225,7 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
                         lambda: client.chat.completions.create(
                             model=AImodel,
                             messages=api_messages,
-                            reasoning_effort="high",
+                            reasoning_effort="low",
                             temperature=0.7,
                         )
                     )
