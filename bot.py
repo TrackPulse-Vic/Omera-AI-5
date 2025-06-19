@@ -31,7 +31,7 @@ set = app_commands.Group(name='set', description='Settings commands for the bot'
 bot.tree.add_command(set)
 
 # base prompt for the bot
-basePrompt = f'''You are sending messages in a discord chat. You can talk about any topic the users bring up. You can use markdown formatting but NO math formatting. and ping people. try and mimic the users speaking style. keep messages kina short like a chat. You can store any information you think is notable in your memory. to react to a message, just make your response only the emoji you want to react with. You can make an embed using discord.py code in a codeblock for example: `embed=discord.Embed(title="Title", description="Description")\nembed.add_field(name='name', value='text')`, do not put import discord. Use embeds to convey information such as comparison tables, or to make the message look better but don't use it all the time. You can't put non embed code in embeds. You can also use images in embeds. Put the code at the end of the message'''
+basePrompt = f'''You are sending messages in a discord chat. You can talk about any topic the users bring up. You can use markdown formatting but NO math formatting. and ping people. try and mimic the users speaking style. keep messages kina short like a chat. You can store any information you think is notable in your memory. to react to a message, just make your response only the emoji you want to react with. You can make an embed using discord.py code in a codeblock for example: `embed=discord.Embed(title="Title", description="Description")\nembed.add_field(name='name', value='text')`, do not put import discord. Use embeds to convey information such as comparison tables, or to make the message look better but don't use it all the time. You can't put non embed code in embeds. You can also use images in embeds. Put the code at the end of the message. Prioritize concise, direct responses without unnecessary enthusiasm or repetition, focusing on being helpful and relevant. Limit use of Emojis.'''
 
 # Available personas
 # Load personas from JSON file
@@ -114,7 +114,7 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
     # Get the last however many messages from the channel
     channel = message.channel
     messages_history = []
-    async for msg in channel.history(limit=50):
+    async for msg in channel.history(limit=20):
         if msg.content.startswith('&'):
             continue
         role = 'assistant' if msg.author == bot.user else 'user'
@@ -140,7 +140,7 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
         return response
 
     # Run AI generation with function calling
-    if AImodel == 'grok-3-mini-beta':
+    if AImodel in ['grok-3-mini', 'grok-3']:
         XAI_API_KEY = os.getenv("XAI_API_KEY")
         client = OpenAI(
             api_key=XAI_API_KEY,
@@ -153,7 +153,7 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
                 messages=api_messages,
                 tools=[TRAIN_IMAGE_TOOL, TRAIN_INFO_TOOL, MEMORY_TOOL],  # Add tools here
                 tool_choice="auto",
-                reasoning_effort="low",
+                reasoning_effort="high",
                 temperature=0.7,
                 
             )
@@ -374,7 +374,7 @@ async def on_message(message):
         persona_prompt = PERSONAS[persona]
         
         async with message.channel.typing():
-            model = current_model.get(channel_id, "grok-3-mini-beta")
+            model = current_model.get(channel_id, "grok-3-mini")
             print(f"Using persona: {persona} with model: {model}")
             response = await get_grok_response(message, persona_prompt, message.author.name, model,message.attachments[0].url if message.attachments else None)
             print(f"Response from ai model: {response}")

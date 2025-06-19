@@ -2,6 +2,8 @@ import csv
 import requests
 from io import StringIO
 
+from functions.images import getImage
+
 def trainData(search_value):
     csv_url = 'https://railway-photos.xm9g.net/trainsets.csv'
     try:
@@ -17,6 +19,10 @@ def trainData(search_value):
                 train_parts = row[0].split('-')
                 if search_value in train_parts:
                     json_data = dict(zip(header, row))  # Use header for keys
+                    image_data = getImage(search_value)
+                    if image_data:
+                        json_data['image_url'] = image_data['url']
+                        json_data['photographer'] = image_data['photographer']
                     return json_data
         print(f"Train {search_value} not found")
     except requests.RequestException as e:

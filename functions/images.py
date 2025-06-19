@@ -31,8 +31,6 @@ def getImage(number):
         url = None
         photographer = None
         
-    
-        
     return {
         "url": url,
         "photographer": photographer
