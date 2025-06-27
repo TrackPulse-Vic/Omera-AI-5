@@ -15,7 +15,9 @@ import asyncio
 from ai_utils import *
 from functions.images import getImage
 from functions.trainInfo import trainData
+from healthcheck import pinghealthcheck
 from memory.memory import addMemory, readMemories
+from discord.ext import tasks
 
 load_dotenv()
 
@@ -299,6 +301,8 @@ async def read_embeds(message):
 @bot.event
 async def on_ready():
     print(f'{bot.user} has connected to Discord!')
+    if not healthchecker.is_running():
+        healthchecker.start()
 
 # Command to set persona
 @set.command(name='persona')
@@ -410,6 +414,10 @@ async def list_personas(ctx):
 @bot.event
 async def on_command_error(ctx, error):
     await ctx.send(f"An error occurred: {str(error)}")
+
+@tasks.loop(hours=1)
+async def healthchecker():
+    pinghealthcheck()
 
     
 @bot.tree.command()
