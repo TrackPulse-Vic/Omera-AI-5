@@ -14,6 +14,7 @@ async def generateImage(prompt,model='grok-2-image-1212'):
 
     return response.data[0].url, response.data[0].revised_prompt
 
+# NOT USED ANYMORE
 async def understantImage(image_url, prompt, model='grok-2-vision-latest', user=None):
     KEY = os.getenv("XAI_API_KEY")
     client = OpenAI(

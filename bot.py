@@ -104,6 +104,9 @@ current_model = {}
 executor = ThreadPoolExecutor(max_workers=4)
 
 async def get_grok_response(message, persona_prompt, username=None, AImodel="grok-3-mini-beta", image_url=None):
+    # set reasoning effort 
+    reasoning_effort = "low"
+    
     # If there's an image, use vision model
     if image_url:
         print(f"Understanding image: {image_url}")
@@ -120,11 +123,34 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
         if msg.content.startswith('&'):
             continue
         role = 'assistant' if msg.author == bot.user else 'user'
-        messages_history.insert(0, {
+        # If the message has an image, format content as a list with image and text
+        if msg.attachments:
+            messages_history.insert(0, {
             "role": role,
-            "content": f"{msg.author.name}: {msg.content}",
-            "images": [image_url] if image_url else None,
-        })
+            "content": [
+                {
+                "type": "image_url",
+                "image_url": {
+                    "url": msg.attachments[0].url,
+                    "detail": "high",
+                },
+                },
+                {
+                "type": "text",
+                "text": f"{msg.author.name}: {msg.content}",
+                },
+            ],
+            })
+        else:
+            messages_history.insert(0, {
+            "role": role,
+            "content": [
+                {
+                "type": "text",
+                "text": f"{msg.author.name}: {msg.content}",
+                },
+            ],
+            })
 
     # Create the system prompt
     memoryPrompt = f'You have the following memories: {readMemories(channel.id)}'
@@ -138,11 +164,13 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
 
     # Use image reading AI model
     if useImageReader:
-        response = await understantImage(image_url, message.content, AImodel, username)
-        return response
+        AImodel = "grok-2-vision-latest"
+        print(f"Using image reading model: {AImodel}")
+        reasoning_effort = None
+
 
     # Run AI generation with function calling
-    if AImodel in ['grok-3-mini', 'grok-3']:
+    if AImodel in ['grok-3-mini', 'grok-3', "grok-2-vision-latest"]:
         XAI_API_KEY = os.getenv("XAI_API_KEY")
         client = OpenAI(
             api_key=XAI_API_KEY,
@@ -155,12 +183,13 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
                 messages=api_messages,
                 tools=[TRAIN_IMAGE_TOOL, TRAIN_INFO_TOOL, MEMORY_TOOL],  # Add tools here
                 tool_choice="auto",
-                reasoning_effort="low",
+                reasoning_effort=reasoning_effort,
                 temperature=0.7,
                 
             )
         )
-        print(f'Thinking:\n {completion.choices[0].message.reasoning_content}')
+        if reasoning_effort != None:
+            print(f'Thinking:\n {completion.choices[0].message.reasoning_content}')
         
         # Check if ai wants to call a function
         message = completion.choices[0].message
@@ -183,7 +212,7 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
                         lambda: client.chat.completions.create(
                             model=AImodel,
                             messages=api_messages,
-                            reasoning_effort="low",
+                            reasoning_effort=reasoning_effort,
                             temperature=0.7,
                         )
                     )
@@ -205,7 +234,7 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
                         lambda: client.chat.completions.create(
                             model=AImodel,
                             messages=api_messages,
-                            reasoning_effort="low",
+                            reasoning_effort=reasoning_effort,
                             temperature=0.7,
                         )
                     )
@@ -227,7 +256,7 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
                         lambda: client.chat.completions.create(
                             model=AImodel,
                             messages=api_messages,
-                            reasoning_effort="low",
+                            reasoning_effort=reasoning_effort,
                             temperature=0.7,
                         )
                     )
@@ -237,7 +266,7 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
         else:
             return message.content
     else:
-        # Use Ollama for other models (no function calling support yet)
+        # Use Ollama for other models (no function calling
         try:
             response = await asyncio.get_event_loop().run_in_executor(
                 executor,
