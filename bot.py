@@ -106,12 +106,14 @@ executor = ThreadPoolExecutor(max_workers=4)
 async def get_grok_response(message, persona_prompt, username=None, AImodel="grok-3-mini-beta", image_url=None):
     # set reasoning effort 
     reasoning_effort = "low"
+    message_history_limit = 20
     
     # If there's an image, use vision model
     if image_url:
         print(f"Understanding image: {image_url}")
         AImodel = "grok-2-vision-latest"
         useImageReader = True
+        message_history_limit = 10  # Reduce history limit for vision model
         print(f"Using vision model for response: {AImodel}")
     else:
         useImageReader = False
@@ -119,19 +121,19 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
     # Get the last however many messages from the channel
     channel = message.channel
     messages_history = []
-    async for msg in channel.history(limit=20):
+    async for msg in channel.history(limit=message_history_limit):
         if msg.content.startswith('&'):
             continue
         role = 'assistant' if msg.author == bot.user else 'user'
         # If the message has an image, format content as a list with image and text
-        if msg.attachments:
+        if image_url:
             messages_history.insert(0, {
             "role": role,
             "content": [
                 {
                 "type": "image_url",
                 "image_url": {
-                    "url": msg.attachments[0].url,
+                    "url": image_url,
                     "detail": "high",
                 },
                 },
