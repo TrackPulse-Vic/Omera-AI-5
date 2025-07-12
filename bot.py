@@ -371,6 +371,7 @@ async def set_model(ctx, model: str):
     await ctx.response.send_message(f"AI Model set to '{model}' for this channel!")
 
 # image generator command
+"""
 @bot.tree.command(name='draw')
 async def draw(ctx,prompt:str):
     await ctx.response.send_message('<a:generating:1370894593263927378>Generating image...')
@@ -386,7 +387,7 @@ async def draw(ctx,prompt:str):
     except Exception as e:
         print(f"Error generating image: {e}")
         await ctx.edit_original_response(content="Sorry, I couldn't generate the image. Please try again later.")
-
+"""
 # Event handler for all messages
 @bot.event
 async def on_message(message):
