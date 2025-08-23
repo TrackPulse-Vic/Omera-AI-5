@@ -281,6 +281,30 @@ async def set_persona(ctx, persona: str):
     current_personas[channel_id] = persona.lower()
     await ctx.response.send_message(f"Persona set to '{persona}' for this channel!")
 
+# Command to set default persona
+@set.command(name='default-persona')
+@app_commands.choices(persona=[
+    app_commands.Choice(name="Default", value="default"),
+    app_commands.Choice(name="Gunzel", value="railway"),
+    app_commands.Choice(name="Foamer", value="foamer"),
+    app_commands.Choice(name="Professional", value="professional"),
+    app_commands.Choice(name="Sarcastic", value="sarcastic"),
+    app_commands.Choice(name="Uncensored", value="uncensored"),
+
+])
+async def set_default_persona(ctx, persona: str):
+    if ctx.user.id in admin_users:
+        if persona.lower() not in PERSONAS:
+            available = ", ".join(PERSONAS.keys())
+            await ctx.response.send_message(f"Invalid persona! Available options: {available}")
+            return
+        
+        global defaultPersona
+        defaultPersona = persona.lower()
+        await ctx.response.send_message(f"Default persona set to '{defaultPersona}'")
+    else:
+        await ctx.response.send_message(f"You don't have permission to use this command")
+
 # command to query the persona
 @query.command(name='persona')
 async def query_persona(ctx):
@@ -304,6 +328,25 @@ async def query_persona(ctx):
 async def set_model(ctx, model: str):
     current_model[ctx.channel.id] = model.lower()
     await ctx.response.send_message(f"AI Model set to '{model}' for this channel!")
+
+# command to change the default ai model
+@set.command(name='default-model')
+@app_commands.choices(model=[
+    app_commands.Choice(name="Llama 3 8b", value="llama3:8b"),
+    app_commands.Choice(name="Llama 3.2 1b", value="llama3.2:1b"),
+    app_commands.Choice(name="Gemma 3 1b", value="gemma3:1b"),
+    app_commands.Choice(name="GPT OSS 20b", value="gpt-oss:20b"),
+    app_commands.Choice(name="Deepseek R1 1.5b", value="deepseek-r1:1.5b"),
+    app_commands.Choice(name="Deepseek R1 8b", value="deepseek-r1:8b"),
+
+])
+async def set_default_model(ctx, model: str):
+    if ctx.user.id in admin_users:
+        global defaultModel
+        defaultModel = model.lower()
+        await ctx.response.send_message(f"Default AI Model set to '{defaultModel}'")
+    else:
+        await ctx.response.send_message(f"You don't have permission to use this command")
 
 # command to query the ai model selected
 @query.command(name='model')
@@ -402,6 +445,9 @@ async def sync(ctx):
             f"Synced {len(synced)} commands."
         )
         return
+    else:
+        await ctx.response.send_message(f"You don't have permission to use this command")
+        return
     
 @bot.command(name='sync')
 # @commands.guild_only()
@@ -411,6 +457,9 @@ async def sync_prefix(ctx):
         await ctx.send(
             f"Synced {len(synced)} commands."
         )
+        return
+    else:
+        await ctx.send(f"You don't have permission to use this command")
         return
     
 
