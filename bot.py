@@ -1,4 +1,5 @@
 from typing import Literal, Optional
+import typing
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -11,6 +12,8 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
 
+import ollama
+
 from ai_utils import *
 from functions.images import getImage
 from functions.trainInfo import trainData
@@ -21,6 +24,9 @@ from discord.ext import tasks
 load_dotenv()
 
 REPLY_CHANNEL_IDS = os.environ.get('REPLY_CHANNEL_ID').split(',')
+
+installedModels = []
+
 
 intents = discord.Intents.all()
 intents.message_content = True
@@ -107,11 +113,10 @@ async def get_ai_response(message, persona_prompt, username=None, AImodel=defaul
     # Set message history limit
     message_history_limit = 20
     
-    # If there's an image, use vision model
     image_bytes = None
     if image_url:
         print(f"Understanding image: {image_url}")
-        AImodel = "llava:13b"  # Ensure this matches a vision model available in your Ollama setup
+        AImodel = "llava:13b" 
         message_history_limit = 10  # Reduce history limit for vision model
         # Download image bytes for Ollama
         async with aiohttp.ClientSession() as session:
@@ -130,30 +135,25 @@ async def get_ai_response(message, persona_prompt, username=None, AImodel=defaul
         if msg.content.startswith('&'):
             continue
         role = 'assistant' if msg.author == bot.user else 'user'
-        # For Ollama, content should be a string unless it's a vision model with an image
         content = f"{msg.author.name}: {msg.content}"
         message_entry = {
             "role": role,
             "content": content
         }
-        # Add image only to the current message if applicable and using vision model
         if image_url and msg.id == message.id and image_bytes and AImodel.startswith("llava"):
-            message_entry["images"] = [image_bytes]  # Ollama expects images as a list of bytes
+            message_entry["images"] = [image_bytes]  
         messages_history.insert(0, message_entry)
 
-    # Create the system prompt
     memoryPrompt = f'You have the following memories: {readMemories(channel.id)}'
     prompt = f'{persona_prompt} {basePrompt}, {memoryPrompt}, here is details of the message: sent by {username}: {message.content}'
     
     print(f'Sending message to AI with context from last {len(messages_history)} messages')
     
-    # Add system prompt and conversation history
     api_messages = [{"role": "system", "content": prompt}]
     api_messages.extend(messages_history)
 
     tools = [TRAIN_IMAGE_TOOL, TRAIN_INFO_TOOL, MEMORY_TOOL]
 
-    # Run AI generation with function calling using Ollama
     try:
         completion = await asyncio.get_event_loop().run_in_executor(
             executor,
@@ -166,12 +166,11 @@ async def get_ai_response(message, persona_prompt, username=None, AImodel=defaul
         )
         message = completion['message']
         
-        # Check if AI wants to call a function
         if 'tool_calls' in message:
             for tool_call in message['tool_calls']:
                 func = tool_call['function']
                 name = func['name']
-                args = func['arguments']  # Ollama provides dict directly
+                args = func['arguments'] 
                 
                 if name == "train_image":
                     number = args.get("number")
@@ -259,6 +258,11 @@ async def on_ready():
     print(f'{bot.user} has connected to Discord!')
     if not healthchecker.is_running():
         healthchecker.start()
+    ollamaModels = ollama.list()
+    global installedModels
+    for model in ollamaModels['models']:
+        installedModels.append(model['model'])
+    print(f"Available Ollama models: {', '.join(installedModels)}")
 
 # Command to set persona
 @set.command(name='persona')
@@ -313,21 +317,20 @@ async def query_persona(ctx):
         await ctx.response.send_message(f"Persona set to '{current_personas[channel_id]}' for this channel!")
     except:
         await ctx.response.send_message(f"Persona set to '{defaultPersona}' for this channel!")
-    
+
+async def modelAutocompletion(
+    interaction: discord.Interaction,
+    current: str
+) -> typing.List[app_commands.Choice[str]]:
+    global installedModels
+    fruits = installedModels
+    return [
+        app_commands.Choice(name=fruit, value=fruit)
+        for fruit in fruits if current.lower() in fruit.lower()
+    ][:25]
 # command to change the ai model
 @set.command(name='model')
-@app_commands.choices(model=[
-    app_commands.Choice(name="Qwen 3 4b", value="qwen3:4b"),
-    app_commands.Choice(name="Qwen 3 8b", value="qwen3:8b"),
-    app_commands.Choice(name="Qwen 3 30b", value="qwen3:30b"),
-    app_commands.Choice(name="Llama 3 8b", value="llama3:8b"),
-    app_commands.Choice(name="Llama 3.2 1b", value="llama3.2:1b"),
-    app_commands.Choice(name="Gemma 3 1b", value="gemma3:1b"),
-    app_commands.Choice(name="GPT OSS 20b", value="gpt-oss:20b"),
-    app_commands.Choice(name="Deepseek R1 1.5b", value="deepseek-r1:1.5b"),
-    app_commands.Choice(name="Deepseek R1 8b", value="deepseek-r1:8b"),
-
-])
+@app_commands.autocomplete(model=modelAutocompletion)
 async def set_model(ctx, model: str):
     current_model[ctx.channel.id] = model.lower()
     await ctx.response.send_message(f"AI Model set to '{model}' for this channel!")
