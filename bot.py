@@ -115,10 +115,12 @@ MEMORY_TOOL = {
 }
 
 # Store current persona per server
+current_personas = {}
+current_model = {}
 with open('personas store.json', 'r') as file:
     current_personas = json.load(file)
 with open('models store.json', 'r') as file:
-    current_models = json.load(file)
+    current_model = json.load(file)
 
 executor = ThreadPoolExecutor(max_workers=4)
 
@@ -294,8 +296,8 @@ async def set_persona(ctx, persona: str):
         await ctx.response.send_message(f"Invalid persona! Available options: {available}")
         return
     
-    channel_id = ctx.channel.id
-    current_personas[channel_id] = persona.lower()
+    channel_id = str(ctx.channel.id)
+    current_personas[str(channel_id)] = persona.lower()
     with open('personas store.json', 'w') as file:
         json.dump(current_personas, file)
     await ctx.response.send_message(f"Persona set to '{persona}' for this channel!")
@@ -329,9 +331,9 @@ async def set_default_persona(ctx, persona: str):
 # command to query the persona
 @query.command(name='persona')
 async def query_persona(ctx):
-    channel_id = ctx.channel.id
+    channel_id = str(ctx.channel.id)
     try:
-        await ctx.response.send_message(f"Persona set to '{current_personas[channel_id]}' for this channel!")
+        await ctx.response.send_message(f"Persona set to '{current_personas[str(channel_id)]}' for this channel!")
     except:
         await ctx.response.send_message(f"Persona set to '{defaultPersona}' for this channel!")
 
@@ -349,8 +351,8 @@ async def modelAutocompletion(
 @set.command(name='model')
 @app_commands.autocomplete(model=modelAutocompletion)
 async def set_model(ctx, model: str):
-    current_model[ctx.channel.id] = model.lower()
-    with open('models.json', 'w') as file:
+    current_model[str(ctx.channel.id)] = model.lower()
+    with open('models store.json', 'w') as file:
         json.dump(current_model, file)
     await ctx.response.send_message(f"AI Model set to '{model}' for this channel!")
 
@@ -371,7 +373,7 @@ async def set_default_model(ctx, model: str):
 @query.command(name='model')
 async def query_model(ctx):
     try:
-        await ctx.response.send_message(f"AI Model set to '{current_model[ctx.channel.id]}' for this channel!")
+        await ctx.response.send_message(f"AI Model set to '{current_model[str(ctx.channel.id)]}' for this channel!")
     except:
         await ctx.response.send_message(f"AI Model set to '{defaultModel}' for this channel!")
 
@@ -409,11 +411,11 @@ async def on_message(message):
         print(f"Received message: {message.content} from {message.author}")
         channel_id = message.channel.id
         message_id = message.id
-        persona = current_personas.get(channel_id, defaultPersona)
+        persona = current_personas.get(str(channel_id), defaultPersona)
         persona_prompt = PERSONAS[persona]
         
         async with message.channel.typing():
-            model = current_model.get(channel_id, defaultModel)
+            model = current_model.get(str(channel_id), defaultModel)
             print(f"Using persona: {persona} with model: {model}")
             response = await get_ai_response(message, persona_prompt, message.author.name, model, message.attachments[0].url if message.attachments else None)
             print(f"Response from ai model: {response}")
@@ -433,7 +435,7 @@ async def on_message(message):
 # @bot.command(name='chat')
 # async def chat(ctx, *, message):
 #     guild_id = ctx.guild.id
-#     persona = current_personas.get(guild_id, "default")  # Default to default
+#     persona = current_personas.get(str(guild_id), "default")  # Default to default
 #     persona_prompt = PERSONAS[persona]
     
 #     response = await get_ai_response(message, persona_prompt)
