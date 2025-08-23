@@ -5,7 +5,7 @@ from io import StringIO
 from functions.images import getImage
 
 def trainData(search_value):
-    csv_url = 'https://railway-photos.xm9g.net/trainsets.csv'
+    csv_url = 'https://railway-photos.xm9g.net/api/trainsets.csv'
     try:
         response = requests.get(csv_url)
         response.raise_for_status()
