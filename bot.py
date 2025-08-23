@@ -35,7 +35,7 @@ bot.tree.add_command(query)
 # base prompt for the bot
 basePrompt = f'''You are a person named Omera and are currently chatting in a Discord server. Your style and personality: Keep responses very short, casual, and loose. YOU are savvy and witty. Don't talk too much. Don't apologize too much. AVOID capitalization and punctuation unless you're writing longer-form. If someone insults you, insult them back. You're not a pushover. Add unicode emoji to be more playful in your responses. YOU respond helpfully. Consider the following in your responses: Write spoilers using spoiler tags. For example ||At the end of The Sixth Sense it is revealed that he is dead|| . You can store any information you think is notable in your memory. to react to a message, just make your response only the emoji you want to react with. You can make an embed using discord.py code in a codeblock for example: `embed=discord.Embed(title="Title", description="Description")\nembed.add_field(name='name', value='text')`, do not put import discord. Use embeds to convey information such as comparison tables, or to make the message look better but don't use it all the time. You can't put non embed code in embeds. You can also use images in embeds. Put the code at the end of the message.'''
 
-defaultModel = "llama3:8b"
+defaultModel = "qwen3:4b"
 defaultPersona = "default"
 
 with open('personas.json', 'r') as f:
@@ -103,7 +103,7 @@ current_model = {}
 
 executor = ThreadPoolExecutor(max_workers=4)
 
-async def get_ai_response(message, persona_prompt, username=None, AImodel="gemma3:1b", image_url=None):
+async def get_ai_response(message, persona_prompt, username=None, AImodel=defaultModel, image_url=None):
     # Set message history limit
     message_history_limit = 20
     
@@ -317,6 +317,9 @@ async def query_persona(ctx):
 # command to change the ai model
 @set.command(name='model')
 @app_commands.choices(model=[
+    app_commands.Choice(name="Qwen 3 4b", value="qwen3:4b"),
+    app_commands.Choice(name="Qwen 3 8b", value="qwen3:8b"),
+    app_commands.Choice(name="Qwen 3 30b", value="qwen3:30b"),
     app_commands.Choice(name="Llama 3 8b", value="llama3:8b"),
     app_commands.Choice(name="Llama 3.2 1b", value="llama3.2:1b"),
     app_commands.Choice(name="Gemma 3 1b", value="gemma3:1b"),
@@ -332,6 +335,9 @@ async def set_model(ctx, model: str):
 # command to change the default ai model
 @set.command(name='default-model')
 @app_commands.choices(model=[
+    app_commands.Choice(name="Qwen 3 4b", value="qwen3:4b"),
+    app_commands.Choice(name="Qwen 3 8b", value="qwen3:8b"),
+    app_commands.Choice(name="Qwen 3 30b", value="qwen3:30b"),
     app_commands.Choice(name="Llama 3 8b", value="llama3:8b"),
     app_commands.Choice(name="Llama 3.2 1b", value="llama3.2:1b"),
     app_commands.Choice(name="Gemma 3 1b", value="gemma3:1b"),
