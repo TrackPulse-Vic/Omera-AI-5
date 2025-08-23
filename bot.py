@@ -296,7 +296,7 @@ async def set_persona(ctx, persona: str):
         file.write('')
     for current_persona in current_personas:
         with open('personas.txt', 'a') as file:
-            file.write('['+str(current_persona)+','+current_personas[current_persona]+']')
+            file.write(str(current_persona)+':'+current_personas[current_persona]+',')
     await ctx.response.send_message(f"Persona set to '{persona}' for this channel!")
 
 # Command to set default persona
@@ -353,7 +353,7 @@ async def set_model(ctx, model: str):
         file.write('')
     for current_mode in current_model:
         with open('personas.txt', 'a') as file:
-            file.write('['+str(current_mode)+','+current_model[current_mode]+']')
+            file.write(str(current_mode)+':'+current_model[current_mode]+',')
     await ctx.response.send_message(f"AI Model set to '{model}' for this channel!")
 
 # command to change the default ai model
