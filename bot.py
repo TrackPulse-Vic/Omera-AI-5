@@ -337,18 +337,7 @@ async def set_model(ctx, model: str):
 
 # command to change the default ai model
 @set.command(name='default-model')
-@app_commands.choices(model=[
-    app_commands.Choice(name="Qwen 3 4b", value="qwen3:4b"),
-    app_commands.Choice(name="Qwen 3 8b", value="qwen3:8b"),
-    app_commands.Choice(name="Qwen 3 30b", value="qwen3:30b"),
-    app_commands.Choice(name="Llama 3 8b", value="llama3:8b"),
-    app_commands.Choice(name="Llama 3.2 1b", value="llama3.2:1b"),
-    app_commands.Choice(name="Gemma 3 1b", value="gemma3:1b"),
-    app_commands.Choice(name="GPT OSS 20b", value="gpt-oss:20b"),
-    app_commands.Choice(name="Deepseek R1 1.5b", value="deepseek-r1:1.5b"),
-    app_commands.Choice(name="Deepseek R1 8b", value="deepseek-r1:8b"),
-
-])
+@app_commands.autocomplete(model=modelAutocompletion)
 async def set_default_model(ctx, model: str):
     if ctx.user.id in admin_users:
         global defaultModel
