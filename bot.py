@@ -97,61 +97,57 @@ current_model = {}
 
 executor = ThreadPoolExecutor(max_workers=4)
 
-async def get_ai_response(message, persona_prompt, username=None, AImodel="llama3", image_url=None):
-    # set history amount 
+async def get_ai_response(message, persona_prompt, username=None, AImodel="gemma3:1b", image_url=None):
+    # Set message history limit
     message_history_limit = 20
     
     # If there's an image, use vision model
     image_bytes = None
     if image_url:
         print(f"Understanding image: {image_url}")
-        AImodel = "llava" 
+        AImodel = "llava:13b"  # Ensure this matches a vision model available in your Ollama setup
         message_history_limit = 10  # Reduce history limit for vision model
+        # Download image bytes for Ollama
         async with aiohttp.ClientSession() as session:
             async with session.get(image_url) as resp:
                 if resp.status == 200:
                     image_bytes = await resp.read()
                 else:
                     print(f"Failed to download image: {resp.status}")
-                    return "Sorry, I couldn't process that image!"
+                    return "Sorry, couldn't process the image."
         print(f"Using vision model for response: {AImodel}")
     
-    # Get the last however many messages from the channel
+    # Get the last messages from the channel
     channel = message.channel
     messages_history = []
     async for msg in channel.history(limit=message_history_limit):
         if msg.content.startswith('&'):
             continue
         role = 'assistant' if msg.author == bot.user else 'user'
-        content = [
-            {
-                "type": "text",
-                "text": f"{msg.author.name}: {msg.content}",
-            }
-        ]
-
-        if image_url and msg.id == message.id and image_bytes:
-            content.insert(0, {
-                "type": "image",
-                "image": image_bytes,  
-            })
-        messages_history.insert(0, {
+        # For Ollama, content should be a string unless it's a vision model with an image
+        content = f"{msg.author.name}: {msg.content}"
+        message_entry = {
             "role": role,
-            "content": content,
-        })
+            "content": content
+        }
+        # Add image only to the current message if applicable and using vision model
+        if image_url and msg.id == message.id and image_bytes and AImodel.startswith("llava"):
+            message_entry["images"] = [image_bytes]  # Ollama expects images as a list of bytes
+        messages_history.insert(0, message_entry)
 
-    # system prompt
+    # Create the system prompt
     memoryPrompt = f'You have the following memories: {readMemories(channel.id)}'
     prompt = f'{persona_prompt} {basePrompt}, {memoryPrompt}, here is details of the message: sent by {username}: {message.content}'
     
     print(f'Sending message to AI with context from last {len(messages_history)} messages')
     
+    # Add system prompt and conversation history
     api_messages = [{"role": "system", "content": prompt}]
     api_messages.extend(messages_history)
 
     tools = [TRAIN_IMAGE_TOOL, TRAIN_INFO_TOOL, MEMORY_TOOL]
 
-    # Run AI 
+    # Run AI generation with function calling using Ollama
     try:
         completion = await asyncio.get_event_loop().run_in_executor(
             executor,
@@ -164,11 +160,12 @@ async def get_ai_response(message, persona_prompt, username=None, AImodel="llama
         )
         message = completion['message']
         
+        # Check if AI wants to call a function
         if 'tool_calls' in message:
             for tool_call in message['tool_calls']:
                 func = tool_call['function']
                 name = func['name']
-                args = func['arguments']
+                args = func['arguments']  # Ollama provides dict directly
                 
                 if name == "train_image":
                     number = args.get("number")
@@ -192,6 +189,7 @@ async def get_ai_response(message, persona_prompt, username=None, AImodel="llama
                         "content": "Memory added successfully."
                     })
             
+            # Get final response after tool calls
             final_completion = await asyncio.get_event_loop().run_in_executor(
                 executor,
                 lambda: chat(
@@ -280,7 +278,13 @@ async def set_persona(ctx, persona: str):
 # command to change the ai model
 @set.command(name='model')
 @app_commands.choices(model=[
-    app_commands.Choice(name="Llama3 8b (Local)", value="llama3:8b"),
+    app_commands.Choice(name="Llama 3 8b", value="llama3:8b"),
+    app_commands.Choice(name="Llamma 3.2 1b", value="llama3.2:1b"),
+
+    app_commands.Choice(name="Gemma 3 1b", value="gemma3:1b"),
+    app_commands.Choice(name="GPT OSS 20b", value="gpt-oss:20b"),
+    app_commands.Choice(name="Deepseek R1 1.5b", value="deepseek-r1:1.5b"),
+
 ])
 async def set_model(ctx, model: str):
     current_model[ctx.channel.id] = model.lower()
