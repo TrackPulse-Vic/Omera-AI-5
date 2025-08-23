@@ -6,7 +6,6 @@ import aiohttp
 import json
 import os
 from dotenv import load_dotenv
-from openai import OpenAI
 from ollama import chat
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -21,22 +20,18 @@ from discord.ext import tasks
 
 load_dotenv()
 
-# Channel ID from .env
 REPLY_CHANNEL_IDS = os.environ.get('REPLY_CHANNEL_ID').split(',')
 
-intents = discord.Intents.all()  # Enable all intents for full message access
+intents = discord.Intents.all()
 intents.message_content = True
 bot = commands.Bot(command_prefix='&', intents=intents)
 
-# Create command groups
 set = app_commands.Group(name='set', description='Settings commands for the bot')
 bot.tree.add_command(set)
 
 # base prompt for the bot
 basePrompt = f'''You are a person named Omera and are currently chatting in a Discord server. Your style and personality: Keep responses very short, casual, and loose. YOU are savvy and witty. Don't talk too much. Don't apologize too much. AVOID capitalization and punctuation unless you're writing longer-form. If someone insults you, insult them back. You're not a pushover. Add unicode emoji to be more playful in your responses. YOU respond helpfully. Consider the following in your responses: Write spoilers using spoiler tags. For example ||At the end of The Sixth Sense it is revealed that he is dead|| . You can store any information you think is notable in your memory. to react to a message, just make your response only the emoji you want to react with. You can make an embed using discord.py code in a codeblock for example: `embed=discord.Embed(title="Title", description="Description")\nembed.add_field(name='name', value='text')`, do not put import discord. Use embeds to convey information such as comparison tables, or to make the message look better but don't use it all the time. You can't put non embed code in embeds. You can also use images in embeds. Put the code at the end of the message.'''
 
-# Available personas
-# Load personas from JSON file
 with open('personas.json', 'r') as f:
     persona_data = json.load(f)
 
@@ -100,23 +95,26 @@ MEMORY_TOOL = {
 current_personas = {}
 current_model = {}
 
-# Create a ThreadPoolExecutor
 executor = ThreadPoolExecutor(max_workers=4)
 
-async def get_grok_response(message, persona_prompt, username=None, AImodel="grok-3-mini-beta", image_url=None):
-    # set reasoning effort 
-    reasoning_effort = "low"
+async def get_ai_response(message, persona_prompt, username=None, AImodel="llama3", image_url=None):
+    # set history amount 
     message_history_limit = 20
     
     # If there's an image, use vision model
+    image_bytes = None
     if image_url:
         print(f"Understanding image: {image_url}")
-        AImodel = "grok-2-vision-latest"
-        useImageReader = True
+        AImodel = "llava" 
         message_history_limit = 10  # Reduce history limit for vision model
+        async with aiohttp.ClientSession() as session:
+            async with session.get(image_url) as resp:
+                if resp.status == 200:
+                    image_bytes = await resp.read()
+                else:
+                    print(f"Failed to download image: {resp.status}")
+                    return "Sorry, I couldn't process that image!"
         print(f"Using vision model for response: {AImodel}")
-    else:
-        useImageReader = False
     
     # Get the last however many messages from the channel
     channel = message.channel
@@ -125,192 +123,116 @@ async def get_grok_response(message, persona_prompt, username=None, AImodel="gro
         if msg.content.startswith('&'):
             continue
         role = 'assistant' if msg.author == bot.user else 'user'
-        # If the message has an image, format content as a list with image and text
-        if image_url:
-            messages_history.insert(0, {
-            "role": role,
-            "content": [
-                {
-                "type": "image_url",
-                "image_url": {
-                    "url": image_url,
-                    "detail": "high",
-                },
-                },
-                {
+        content = [
+            {
                 "type": "text",
                 "text": f"{msg.author.name}: {msg.content}",
-                },
-            ],
-            })
-        else:
-            messages_history.insert(0, {
-            "role": role,
-            "content": [
-                {
-                "type": "text",
-                "text": f"{msg.author.name}: {msg.content}",
-                },
-            ],
-            })
+            }
+        ]
 
-    # Create the system prompt
+        if image_url and msg.id == message.id and image_bytes:
+            content.insert(0, {
+                "type": "image",
+                "image": image_bytes,  
+            })
+        messages_history.insert(0, {
+            "role": role,
+            "content": content,
+        })
+
+    # system prompt
     memoryPrompt = f'You have the following memories: {readMemories(channel.id)}'
     prompt = f'{persona_prompt} {basePrompt}, {memoryPrompt}, here is details of the message: sent by {username}: {message.content}'
     
     print(f'Sending message to AI with context from last {len(messages_history)} messages')
     
-    # Add system prompt and conversation history
     api_messages = [{"role": "system", "content": prompt}]
     api_messages.extend(messages_history)
 
-    # Use image reading AI model
-    if useImageReader:
-        AImodel = "grok-2-vision-latest"
-        print(f"Using image reading model: {AImodel}")
-        reasoning_effort = None
+    tools = [TRAIN_IMAGE_TOOL, TRAIN_INFO_TOOL, MEMORY_TOOL]
 
-
-    # Run AI generation with function calling
-    if AImodel in ['grok-3-mini', 'grok-3', "grok-2-vision-latest"]:
-        XAI_API_KEY = os.getenv("XAI_API_KEY")
-        client = OpenAI(
-            api_key=XAI_API_KEY,
-            base_url="https://api.x.ai/v1",
-        )
+    # Run AI 
+    try:
         completion = await asyncio.get_event_loop().run_in_executor(
             executor,
-            lambda: client.chat.completions.create(
+            lambda: chat(
                 model=AImodel,
                 messages=api_messages,
-                tools=[TRAIN_IMAGE_TOOL, TRAIN_INFO_TOOL, MEMORY_TOOL],  # Add tools here
-                tool_choice="auto",
-                reasoning_effort=reasoning_effort,
-                temperature=0.7,
-                
+                tools=tools,
+                options={'temperature': 0.7},
             )
         )
-        if reasoning_effort != None:
-            print(f'Thinking:\n {completion.choices[0].message.reasoning_content}')
+        message = completion['message']
         
-        # Check if ai wants to call a function
-        message = completion.choices[0].message
-        if message.tool_calls:
-            for tool_call in message.tool_calls:
-                if tool_call.function.name == "train_image":
-                    # Parse function arguments
-                    args = json.loads(tool_call.function.arguments)
+        if 'tool_calls' in message:
+            for tool_call in message['tool_calls']:
+                func = tool_call['function']
+                name = func['name']
+                args = func['arguments']
+                
+                if name == "train_image":
                     number = args.get("number")
-                    # Call the actual function
                     image_url_result = getImage(number)
-                    # Send the result back to Grok for final response
                     api_messages.append({
-                        "role": "function",
-                        "name": "train_image",
+                        "role": "tool",
                         "content": str(image_url_result)
                     })
-                    final_completion = await asyncio.get_event_loop().run_in_executor(
-                        executor,
-                        lambda: client.chat.completions.create(
-                            model=AImodel,
-                            messages=api_messages,
-                            reasoning_effort=reasoning_effort,
-                            temperature=0.7,
-                        )
-                    )
-                    return final_completion.choices[0].message.content
-                if tool_call.function.name == "train_info":
-                    # Parse function arguments
-                    args = json.loads(tool_call.function.arguments)
+                elif name == "train_info":
                     number = args.get("number")
-                    # Call the actual function
                     train_info_data = trainData(number)
-                    # Send the result back to Grok for final response
                     api_messages.append({
-                        "role": "function",
-                        "name": "train_info",
+                        "role": "tool",
                         "content": str(train_info_data)
                     })
-                    final_completion = await asyncio.get_event_loop().run_in_executor(
-                        executor,
-                        lambda: client.chat.completions.create(
-                            model=AImodel,
-                            messages=api_messages,
-                            reasoning_effort=reasoning_effort,
-                            temperature=0.7,
-                        )
-                    )
-                    return final_completion.choices[0].message.content
-                if tool_call.function.name == "memory":
-                    # Parse function arguments
-                    args = json.loads(tool_call.function.arguments)
+                elif name == "memory":
                     memory = args.get("memory")
-                    # Call the actual function
                     addMemory(memory, channel.id)
-                    # Send the result back to Grok for final response
                     api_messages.append({
-                        "role": "function",
-                        "name": "memory",
-                        "content": str("Memory added successfully.")
+                        "role": "tool",
+                        "content": "Memory added successfully."
                     })
-                    final_completion = await asyncio.get_event_loop().run_in_executor(
-                        executor,
-                        lambda: client.chat.completions.create(
-                            model=AImodel,
-                            messages=api_messages,
-                            reasoning_effort=reasoning_effort,
-                            temperature=0.7,
-                        )
-                    )
-                    return final_completion.choices[0].message.content
-
-
-        else:
-            return message.content
-    else:
-        # Use Ollama for other models (no function calling
-        try:
-            response = await asyncio.get_event_loop().run_in_executor(
+            
+            final_completion = await asyncio.get_event_loop().run_in_executor(
                 executor,
-                lambda: chat(model=AImodel, messages=api_messages)
+                lambda: chat(
+                    model=AImodel,
+                    messages=api_messages,
+                    options={'temperature': 0.7},
+                )
             )
-            return response['message']['content']
-        except Exception as e:
-            print(f"Error communicating with Ollama: {e}")
-            return "Sorry, I'm having trouble connecting to my AI backend. Please try again later or use a different model."
+            return final_completion['message']['content']
+        else:
+            return message['content']
+    except Exception as e:
+        print(f"Error communicating with Ollama: {e}")
+        return "Sorry, I'm having trouble connecting to my AI backend. Please try again later or use a different model."
 
 async def format_response(response):
-    # Format the response if needed
-    # Get guild members
+    # thing so the bot can ping you
     username_pattern = r'@(\w+)'
     
     def convert_mentions(text):
         def replace_username(match):
             username = match.group(1)
-            # Search for member in all guilds bot has access to
             for guild in bot.guilds:
                 member = discord.utils.get(guild.members, name=username)
                 if member:
                     return f'<@{member.id}>'
-            return f'@{username}'  # If user not found, keep original mention
+            return f'@{username}'
         return re.sub(username_pattern, replace_username, text)
     
-    # Remove "Omera AI: " prefix if present
     if response.startswith("Omera AI: "):
-        response = response[9:]  # Length of "Omera AI: 
+        response = response[9:]
         response = response.lstrip()
         
-    # Remove markdown image prefix from URLs
     response = re.sub(r'!\[(.*?)\]', r'[\1]', response)
     
-    # Remove anything within <think></think> tags
     response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL)
     
     response = convert_mentions(response)
     return response
 
 async def read_embeds(message):
-    # Match both triple and single backtick code blocks
     code_block = re.search(r'`{1,3}(?:python)?\n?([\s\S]*?)`{1,3}', message)
     if not code_block:  
         return None, message
@@ -325,7 +247,6 @@ async def read_embeds(message):
     if 'embed' not in local_vars:
         print("Code did not define an 'embed' variable.")
         return None, message
-    # return message without the code block
     message = re.sub(r'`{1,3}(?:python)?\n?[\s\S]*?`{1,3}', '', message)
     return local_vars['embed'], message.strip()
             
@@ -357,17 +278,12 @@ async def set_persona(ctx, persona: str):
     await ctx.response.send_message(f"Persona set to '{persona}' for this channel!")
     
 # command to change the ai model
-# @set.command(name='model')
-# @app_commands.choices(model=[
-#     app_commands.Choice(name="Grok 3 Mini (Thinking)", value="grok-3-mini-beta"),
-#     app_commands.Choice(name="Grok 2", value="grok-2-latest"),
-#     app_commands.Choice(name="Deepseek R1 1.4b (Thinking) (Local) (Very Slow but good)", value="deepseek-r1:1.5b"),
-#     app_commands.Choice(name="Deepseek R1 14b (Thinking) (Local)", value="deepseek-r1:14b"),
-#     app_commands.Choice(name="Gemma 3 4b (local) (faster but bad)", value="gemma3:4b"),
-#     app_commands.Choice(name="Gemma 3 1b (local) (faster but badder)", value="gemma3:1b"),
-# ])
+@set.command(name='model')
+@app_commands.choices(model=[
+    app_commands.Choice(name="Llama3 8b (Local)", value="llama3:8b"),
+])
 async def set_model(ctx, model: str):
-    current_model[ctx.guild.id] = model.lower()
+    current_model[ctx.channel.id] = model.lower()
     await ctx.response.send_message(f"AI Model set to '{model}' for this channel!")
 
 # image generator command
@@ -391,14 +307,12 @@ async def draw(ctx,prompt:str):
 # Event handler for all messages
 @bot.event
 async def on_message(message):
-    # Ignore messages from the bot itself
     if message.author == bot.user:
         return
     # if message.content.startswith('&'):
     #     print(f"Command detected: {message.content}")
     #     return
     
-    # Debug print to check all incoming messages
     print(f"Message received - Channel ID: {message.channel.id}, Expected IDs: {REPLY_CHANNEL_IDS}")
     
     # Check if message is in the specified channel
@@ -406,13 +320,13 @@ async def on_message(message):
         print(f"Received message: {message.content} from {message.author}")
         channel_id = message.channel.id
         message_id = message.id
-        persona = current_personas.get(channel_id, "default")  # Default to default
+        persona = current_personas.get(channel_id, "default")
         persona_prompt = PERSONAS[persona]
         
         async with message.channel.typing():
-            model = current_model.get(channel_id, "grok-3-mini")
+            model = current_model.get(channel_id, "llama3:8b")
             print(f"Using persona: {persona} with model: {model}")
-            response = await get_grok_response(message, persona_prompt, message.author.name, model,message.attachments[0].url if message.attachments else None)
+            response = await get_ai_response(message, persona_prompt, message.author.name, model, message.attachments[0].url if message.attachments else None)
             print(f"Response from ai model: {response}")
             response = await format_response(response)
             embed, response = await read_embeds(response)
@@ -425,7 +339,6 @@ async def on_message(message):
             
             await message.reply(response, embed=embed if embed else None, mention_author=False)
 
-    # Process commands (needed to keep commands working)
     await bot.process_commands(message)
 
 # @bot.command(name='chat')
@@ -434,7 +347,7 @@ async def on_message(message):
 #     persona = current_personas.get(guild_id, "default")  # Default to default
 #     persona_prompt = PERSONAS[persona]
     
-#     response = await get_grok_response(message, persona_prompt)
+#     response = await get_ai_response(message, persona_prompt)
 #     await ctx.send(response)
 
 # Show available personas
@@ -465,8 +378,7 @@ async def sync(ctx):
     
 
 
-# Run the bot - replace with your Discord bot token
 DISCORD_TOKEN = os.environ.get('DISCORD_TOKEN')
 if not DISCORD_TOKEN:
-    raise ValueError("Please set the DISCORD_TOKEN environment variable")
+    raise ValueError("Please set the DISCORD_TOKEN env")
 bot.run(DISCORD_TOKEN)

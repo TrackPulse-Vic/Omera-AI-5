@@ -3,9 +3,9 @@ import os
 from openai import OpenAI
 
 
-async def generateImage(prompt,model='grok-2-image-1212'):
-    KEY = os.getenv("XAI_API_KEY")
-    client = OpenAI(base_url="https://api.x.ai/v1", api_key=KEY)
+async def generateImage(prompt,model):
+    KEY = os.getenv("API_KEY")
+    client = OpenAI(base_url="", api_key=KEY)
 
     response = client.images.generate(
     model=model,
@@ -15,11 +15,11 @@ async def generateImage(prompt,model='grok-2-image-1212'):
     return response.data[0].url, response.data[0].revised_prompt
 
 # NOT USED ANYMORE
-async def understantImage(image_url, prompt, model='grok-2-vision-latest', user=None):
-    KEY = os.getenv("XAI_API_KEY")
+async def understantImage(image_url, prompt, model, user=None):
+    KEY = os.getenv("API_KEY")
     client = OpenAI(
         api_key=KEY,
-        base_url="https://api.x.ai/v1",
+        base_url="",
     )
     messages = [
         {
