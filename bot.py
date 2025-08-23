@@ -42,15 +42,14 @@ bot.tree.add_command(query)
 basePrompt = f'''You are a person named Omera and are currently chatting in a Discord server. Your style and personality: Keep responses very short, casual, and loose. YOU are savvy and witty. Don't talk too much. Don't apologize too much. AVOID capitalization and punctuation unless you're writing longer-form. If someone insults you, insult them back. You're not a pushover. Add unicode emoji to be more playful in your responses. YOU respond helpfully. Consider the following in your responses: Write spoilers using spoiler tags. For example ||At the end of The Sixth Sense it is revealed that he is dead|| . You can store any information you think is notable in your memory. to react to a message, just make your response only the emoji you want to react with. You can make an embed using discord.py code in a codeblock for example: `embed=discord.Embed(title="Title", description="Description")\nembed.add_field(name='name', value='text')`, do not put import discord. Use embeds to convey information such as comparison tables, or to make the message look better but don't use it all the time. You can't put non embed code in embeds. You can also use images in embeds. Put the code at the end of the message.'''
 
 with open('defaultModel.txt') as file:
-    if not file.read() == "":
-        defaultModel = file.read()
-    else:
+    defaultModel = str(file.read())
+    if defaultModel == "":
         defaultModel = "qwen3:4b"
+    print(defaultModel)
 
 with open('defaultPersona.txt') as file:
-    if not file.read() == "":
-        defaultPersona = file.read()
-    else:
+    defaultPersona = str(file.read())
+    if defaultPersona == "":
         defaultPersona = "default"
 
 with open('personas.json', 'r') as f:
@@ -113,8 +112,10 @@ MEMORY_TOOL = {
 }
 
 # Store current persona per server
-current_personas = {}
-current_model = {}
+with open('personas store.json', 'r') as file:
+    current_personas = json.load(file)
+with open('models store.json', 'r') as file:
+    current_models = json.load(file)
 
 executor = ThreadPoolExecutor(max_workers=4)
 
@@ -292,11 +293,8 @@ async def set_persona(ctx, persona: str):
     
     channel_id = ctx.channel.id
     current_personas[channel_id] = persona.lower()
-    with open('personas.txt', 'w') as file:
-        file.write('')
-    for current_persona in current_personas:
-        with open('personas.txt', 'a') as file:
-            file.write(str(current_persona)+':'+current_personas[current_persona]+',')
+    with open('personas store.json', 'w') as file:
+        json.dump(current_personas, file)
     await ctx.response.send_message(f"Persona set to '{persona}' for this channel!")
 
 # Command to set default persona
@@ -349,11 +347,8 @@ async def modelAutocompletion(
 @app_commands.autocomplete(model=modelAutocompletion)
 async def set_model(ctx, model: str):
     current_model[ctx.channel.id] = model.lower()
-    with open('models.txt', 'w') as file:
-        file.write('')
-    for current_mode in current_model:
-        with open('personas.txt', 'a') as file:
-            file.write(str(current_mode)+':'+current_model[current_mode]+',')
+    with open('models.json', 'w') as file:
+        json.dump(current_model, file)
     await ctx.response.send_message(f"AI Model set to '{model}' for this channel!")
 
 # command to change the default ai model
