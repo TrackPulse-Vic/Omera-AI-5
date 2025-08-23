@@ -24,7 +24,7 @@ REPLY_CHANNEL_IDS = os.environ.get('REPLY_CHANNEL_ID').split(',')
 
 intents = discord.Intents.all()
 intents.message_content = True
-bot = commands.Bot(command_prefix='&', intents=intents)
+bot = commands.Bot(command_prefix=os.environ.get('COMMAND_PREFIX'), intents=intents)
 
 set = app_commands.Group(name='set', description='Settings commands for the bot')
 bot.tree.add_command(set)
