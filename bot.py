@@ -224,7 +224,7 @@ async def format_response(response):
             return f'@{username}'
         return re.sub(username_pattern, replace_username, text)
     
-    if response.startswith("Omera AI: "):
+    if response.lower().startswith("omera ai: "):
         response = response[9:]
         response = response.lstrip()
         
