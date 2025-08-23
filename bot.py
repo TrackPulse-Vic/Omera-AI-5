@@ -25,6 +25,7 @@ REPLY_CHANNEL_IDS = os.environ.get('REPLY_CHANNEL_ID').split(',')
 intents = discord.Intents.all()
 intents.message_content = True
 bot = commands.Bot(command_prefix=os.environ.get('COMMAND_PREFIX'), intents=intents)
+admin_users = [1002449671224041502, 780303451980038165, int(os.environ.get('USER_ID'))]
 
 set = app_commands.Group(name='set', description='Settings commands for the bot')
 bot.tree.add_command(set)
@@ -368,10 +369,20 @@ async def healthchecker():
 @bot.tree.command()
 # @commands.guild_only()
 async def sync(ctx):
-    if ctx.user.id == 780303451980038165:
+    if ctx.user.id in admin_users:
         synced = await bot.tree.sync()
 
         await ctx.response.send_message(
+            f"Synced {len(synced)} commands."
+        )
+        return
+    
+@bot.command(name='sync')
+# @commands.guild_only()
+async def sync(ctx):
+    if ctx.author.id in admin_users:
+        synced = await bot.tree.sync()
+        await ctx.send(
             f"Synced {len(synced)} commands."
         )
         return
