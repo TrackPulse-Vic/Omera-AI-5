@@ -41,8 +41,17 @@ bot.tree.add_command(query)
 # base prompt for the bot
 basePrompt = f'''You are a person named Omera and are currently chatting in a Discord server. Your style and personality: Keep responses very short, casual, and loose. YOU are savvy and witty. Don't talk too much. Don't apologize too much. AVOID capitalization and punctuation unless you're writing longer-form. If someone insults you, insult them back. You're not a pushover. Add unicode emoji to be more playful in your responses. YOU respond helpfully. Consider the following in your responses: Write spoilers using spoiler tags. For example ||At the end of The Sixth Sense it is revealed that he is dead|| . You can store any information you think is notable in your memory. to react to a message, just make your response only the emoji you want to react with. You can make an embed using discord.py code in a codeblock for example: `embed=discord.Embed(title="Title", description="Description")\nembed.add_field(name='name', value='text')`, do not put import discord. Use embeds to convey information such as comparison tables, or to make the message look better but don't use it all the time. You can't put non embed code in embeds. You can also use images in embeds. Put the code at the end of the message.'''
 
-defaultModel = "qwen3:4b"
-defaultPersona = "default"
+with open('defaultModel.txt') as file:
+    if not file.read() == "":
+        defaultModel = file.read()
+    else:
+        defaultModel = "qwen3:4b"
+
+with open('defaultPersona.txt') as file:
+    if not file.read() == "":
+        defaultPersona = file.read()
+    else:
+        defaultPersona = "default"
 
 with open('personas.json', 'r') as f:
     persona_data = json.load(f)
@@ -283,6 +292,11 @@ async def set_persona(ctx, persona: str):
     
     channel_id = ctx.channel.id
     current_personas[channel_id] = persona.lower()
+    with open('personas.txt', 'w') as file:
+        file.write('')
+    for current_persona in current_personas:
+        with open('personas.txt', 'a') as file:
+            file.write('['+str(current_persona)+','+current_personas[current_persona]+']')
     await ctx.response.send_message(f"Persona set to '{persona}' for this channel!")
 
 # Command to set default persona
@@ -305,6 +319,8 @@ async def set_default_persona(ctx, persona: str):
         
         global defaultPersona
         defaultPersona = persona.lower()
+        with open('defaultPersona.txt', 'w') as file:
+            file.write(defaultPersona)
         await ctx.response.send_message(f"Default persona set to '{defaultPersona}'")
     else:
         await ctx.response.send_message(f"You don't have permission to use this command")
@@ -333,6 +349,11 @@ async def modelAutocompletion(
 @app_commands.autocomplete(model=modelAutocompletion)
 async def set_model(ctx, model: str):
     current_model[ctx.channel.id] = model.lower()
+    with open('models.txt', 'w') as file:
+        file.write('')
+    for current_mode in current_model:
+        with open('personas.txt', 'a') as file:
+            file.write('['+str(current_mode)+','+current_model[current_mode]+']')
     await ctx.response.send_message(f"AI Model set to '{model}' for this channel!")
 
 # command to change the default ai model
@@ -342,6 +363,8 @@ async def set_default_model(ctx, model: str):
     if ctx.user.id in admin_users:
         global defaultModel
         defaultModel = model.lower()
+        with open('defaultModel.txt', 'w') as file:
+            file.write(defaultModel)
         await ctx.response.send_message(f"Default AI Model set to '{defaultModel}'")
     else:
         await ctx.response.send_message(f"You don't have permission to use this command")
