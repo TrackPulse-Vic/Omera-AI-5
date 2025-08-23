@@ -281,7 +281,6 @@ async def set_persona(ctx, persona: str):
 @app_commands.choices(model=[
     app_commands.Choice(name="Llama 3 8b", value="llama3:8b"),
     app_commands.Choice(name="Llamma 3.2 1b", value="llama3.2:1b"),
-
     app_commands.Choice(name="Gemma 3 1b", value="gemma3:1b"),
     app_commands.Choice(name="GPT OSS 20b", value="gpt-oss:20b"),
     app_commands.Choice(name="Deepseek R1 1.5b", value="deepseek-r1:1.5b"),
@@ -383,7 +382,7 @@ async def sync(ctx):
     
 @bot.command(name='sync')
 # @commands.guild_only()
-async def sync(ctx):
+async def sync_prefix(ctx):
     if ctx.author.id in admin_users:
         synced = await bot.tree.sync()
         await ctx.send(
