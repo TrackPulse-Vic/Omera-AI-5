@@ -27,11 +27,16 @@ intents.message_content = True
 bot = commands.Bot(command_prefix=os.environ.get('COMMAND_PREFIX'), intents=intents)
 admin_users = [1002449671224041502, 780303451980038165, int(os.environ.get('USER_ID'))]
 
-set = app_commands.Group(name='set', description='Settings commands for the bot')
+set = app_commands.Group(name='set', description='Setting commands for the bot')
+query = app_commands.Group(name='query', description='Info about the bot')
 bot.tree.add_command(set)
+bot.tree.add_command(query)
 
 # base prompt for the bot
 basePrompt = f'''You are a person named Omera and are currently chatting in a Discord server. Your style and personality: Keep responses very short, casual, and loose. YOU are savvy and witty. Don't talk too much. Don't apologize too much. AVOID capitalization and punctuation unless you're writing longer-form. If someone insults you, insult them back. You're not a pushover. Add unicode emoji to be more playful in your responses. YOU respond helpfully. Consider the following in your responses: Write spoilers using spoiler tags. For example ||At the end of The Sixth Sense it is revealed that he is dead|| . You can store any information you think is notable in your memory. to react to a message, just make your response only the emoji you want to react with. You can make an embed using discord.py code in a codeblock for example: `embed=discord.Embed(title="Title", description="Description")\nembed.add_field(name='name', value='text')`, do not put import discord. Use embeds to convey information such as comparison tables, or to make the message look better but don't use it all the time. You can't put non embed code in embeds. You can also use images in embeds. Put the code at the end of the message.'''
+
+defaultModel = "llama3:8b"
+defaultPersona = "default"
 
 with open('personas.json', 'r') as f:
     persona_data = json.load(f)
@@ -275,20 +280,38 @@ async def set_persona(ctx, persona: str):
     channel_id = ctx.channel.id
     current_personas[channel_id] = persona.lower()
     await ctx.response.send_message(f"Persona set to '{persona}' for this channel!")
+
+# command to query the persona
+@query.command(name='persona')
+async def query_persona(ctx):
+    channel_id = ctx.channel.id
+    try:
+        await ctx.response.send_message(f"Persona set to '{current_personas[channel_id]}' for this channel!")
+    except:
+        await ctx.response.send_message(f"Persona set to '{defaultPersona}' for this channel!")
     
 # command to change the ai model
 @set.command(name='model')
 @app_commands.choices(model=[
     app_commands.Choice(name="Llama 3 8b", value="llama3:8b"),
-    app_commands.Choice(name="Llamma 3.2 1b", value="llama3.2:1b"),
+    app_commands.Choice(name="Llama 3.2 1b", value="llama3.2:1b"),
     app_commands.Choice(name="Gemma 3 1b", value="gemma3:1b"),
     app_commands.Choice(name="GPT OSS 20b", value="gpt-oss:20b"),
     app_commands.Choice(name="Deepseek R1 1.5b", value="deepseek-r1:1.5b"),
+    app_commands.Choice(name="Deepseek R1 8b", value="deepseek-r1:8b"),
 
 ])
 async def set_model(ctx, model: str):
     current_model[ctx.channel.id] = model.lower()
     await ctx.response.send_message(f"AI Model set to '{model}' for this channel!")
+
+# command to query the ai model selected
+@query.command(name='model')
+async def query_model(ctx):
+    try:
+        await ctx.response.send_message(f"AI Model set to '{current_model[ctx.channel.id]}' for this channel!")
+    except:
+        await ctx.response.send_message(f"AI Model set to '{defaultModel}' for this channel!")
 
 # image generator command
 """
@@ -324,11 +347,11 @@ async def on_message(message):
         print(f"Received message: {message.content} from {message.author}")
         channel_id = message.channel.id
         message_id = message.id
-        persona = current_personas.get(channel_id, "default")
+        persona = current_personas.get(channel_id, defaultPersona)
         persona_prompt = PERSONAS[persona]
         
         async with message.channel.typing():
-            model = current_model.get(channel_id, "llama3:8b")
+            model = current_model.get(channel_id, defaultModel)
             print(f"Using persona: {persona} with model: {model}")
             response = await get_ai_response(message, persona_prompt, message.author.name, model, message.attachments[0].url if message.attachments else None)
             print(f"Response from ai model: {response}")
