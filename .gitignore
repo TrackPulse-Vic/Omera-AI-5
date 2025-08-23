@@ -1,5 +1,7 @@
 .env
 storedimages/
 memory/memories.json
+models store.json
+personas store.json
 defaultModel.txt
 defaultPersona.txt
