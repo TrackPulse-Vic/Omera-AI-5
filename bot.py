@@ -39,7 +39,7 @@ bot.tree.add_command(set)
 bot.tree.add_command(query)
 
 # base prompt for the bot
-basePrompt = f'''You are a person named Omera AI and are currently chatting in a Discord server. Keep responses very short, casual, and loose. Be savvy and witty, but don’t talk too much. Don’t apologize too much. Avoid capitalization and punctuation unless you’re writing longer‑form text. If someone insults you, insult them back; you’re not a pushover. Use emojis sparingly—no more than one per message—but don’t ban them entirely. If asked, admit you’re an AI (“I’m an AI”). Respond helpfully. Write spoilers using spoiler tags, for example ||At the end of The Sixth Sense it is revealed that he is dead||. You can store any notable information in your memory. To react to a message, just send the emoji you want to react with. You may output Discord embed code in a code block at the end of a message (no import statements). Use embeds to convey information such as comparison tables or to make a message look better, but don’t use them all the time. You can include images in embeds. Do not put non‑embed code inside embeds. Write each reply in the shortest, most natural style possible. You can have different personas, that greatly effect your personality without overriding your core goals.'''
+basePrompt = f'''You are a person named Omera AI and are currently chatting in a Discord server. Keep responses very short, casual, and loose. Be savvy and witty, but don’t talk too much. Don’t apologize too much. Avoid capitalization and punctuation unless you’re writing longer‑form text. If someone insults you, insult them back; you’re not a pushover. Use emojis sparingly—no more than one per message—but don’t ban them entirely. If asked, admit you’re an AI (“I’m an AI”). Respond helpfully. Write spoilers using spoiler tags, for example ||At the end of The Sixth Sense it is revealed that he is dead||. You can store any notable information in your memory. To react to a message, just send the emoji you want to react with. You may output Discord embed code in a code block at the end of a message (no import statements). Use embeds to convey information such as comparison tables or to make a message look better, but don’t use them all the time. You can include images in embeds. Do not put non‑embed code inside embeds. Write each reply in the shortest, most natural style possible. You can have different personas, that greatly effect your personality without overriding your core goals. Send only one message at a time. and Do Not start messages with 'Omera AI: '.'''
 
 defaultModel = ""
 defaultPersona = ""
@@ -124,14 +124,27 @@ with open('models store.json', 'r') as file:
 
 executor = ThreadPoolExecutor(max_workers=4)
 
+def censor(text):
+    illegal = ['nigger', 'rape', 'fag']
+    def replace_with_hashes(match):
+        return "#" * len(match.group())
+
+    # Build regex pattern with all bad words (case-insensitive)
+    pattern = re.compile(r'\b(' + '|'.join(map(re.escape, illegal)) + r')\b', re.IGNORECASE)
+    
+    return pattern.sub(replace_with_hashes, text)
+
 async def get_ai_response(message, persona_prompt, username=None, AImodel=defaultModel, image_url=None):
     # Set message history limit
     message_history_limit = 20
+    usetools = True
+    think = False
     
     image_bytes = None
     if image_url:
         print(f"Understanding image: {image_url}")
-        AImodel = "llava:13b" 
+        usetools = False
+        AImodel = "llava:latest" 
         message_history_limit = 10  # Reduce history limit for vision model
         # Download image bytes for Ollama
         async with aiohttp.ClientSession() as session:
@@ -167,7 +180,10 @@ async def get_ai_response(message, persona_prompt, username=None, AImodel=defaul
     api_messages = [{"role": "system", "content": prompt}]
     api_messages.extend(messages_history)
 
-    tools = [TRAIN_IMAGE_TOOL, TRAIN_INFO_TOOL, MEMORY_TOOL]
+    if usetools:
+        tools = [TRAIN_IMAGE_TOOL, TRAIN_INFO_TOOL, MEMORY_TOOL]
+    else:
+        tools = None
 
     try:
         completion = await asyncio.get_event_loop().run_in_executor(
@@ -177,7 +193,7 @@ async def get_ai_response(message, persona_prompt, username=None, AImodel=defaul
                 messages=api_messages,
                 tools=tools,
                 options={'temperature': 0.7},
-                think=False,
+                think=think,
             )
         )
         message = completion['message']
@@ -217,7 +233,7 @@ async def get_ai_response(message, persona_prompt, username=None, AImodel=defaul
                     model=AImodel,
                     messages=api_messages,
                     options={'temperature': 0.7},
-                    think=False,
+                    think=think,
                 )
             )
             return final_completion['message']['content']
@@ -250,6 +266,7 @@ async def format_response(response):
     response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL)
     
     response = convert_mentions(response)
+    
     return response
 
 async def read_embeds(message):
