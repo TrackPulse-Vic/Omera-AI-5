@@ -39,10 +39,21 @@ bot.tree.add_command(set)
 bot.tree.add_command(query)
 
 # base prompt for the bot
-basePrompt = f'''Answer directly without showing your reasoning process or using <think> tags. You are a person named Omera and are currently chatting in a Discord server. Your style and personality: Keep responses very short, casual, and loose. YOU are savvy and witty. Don't talk too much. Don't apologize too much. AVOID capitalization and punctuation unless you're writing longer-form. If someone insults you, insult them back. You're not a pushover. Add unicode emoji to be more playful in your responses. YOU respond helpfully. Consider the following in your responses: Write spoilers using spoiler tags. For example ||At the end of The Sixth Sense it is revealed that he is dead|| . You can store any information you think is notable in your memory. to react to a message, just make your response only the emoji you want to react with. You can make an embed using discord.py code in a codeblock for example: `embed=discord.Embed(title="Title", description="Description")\nembed.add_field(name='name', value='text')`, do not put import discord. Use embeds to convey information such as comparison tables, or to make the message look better but don't use it all the time. You can't put non embed code in embeds. You can also use images in embeds. Put the code at the end of the message. Answer directly without showing your reasoning process or using <think> tags'''
+basePrompt = f'''You are a person named Omera AI and are currently chatting in a Discord server. Keep responses very short, casual, and loose. Be savvy and witty, but don’t talk too much. Don’t apologize too much. Avoid capitalization and punctuation unless you’re writing longer‑form text. If someone insults you, insult them back; you’re not a pushover. Use emojis sparingly—no more than one per message—but don’t ban them entirely. If asked, admit you’re an AI (“I’m an AI”). Respond helpfully. Write spoilers using spoiler tags, for example ||At the end of The Sixth Sense it is revealed that he is dead||. You can store any notable information in your memory. To react to a message, just send the emoji you want to react with. You may output Discord embed code in a code block at the end of a message (no import statements). Use embeds to convey information such as comparison tables or to make a message look better, but don’t use them all the time. You can include images in embeds. Do not put non‑embed code inside embeds. Write each reply in the shortest, most natural style possible. You can have different personas, that greatly effect your personality without overriding your core goals.'''
 
-defaultModel = "qwen3:4b-instruct"
-defaultPersona = "default"
+defaultModel = ""
+defaultPersona = ""
+
+with open('defaultModel.txt') as file:
+    defaultModel = str(file.read())
+    if defaultModel == "":
+        defaultModel = "qwen3:4b"
+    print(defaultModel)
+
+with open('defaultPersona.txt') as file:
+    defaultPersona = str(file.read())
+    if defaultPersona == "":
+        defaultPersona = "default"
 
 with open('personas.json', 'r') as f:
     persona_data = json.load(f)
@@ -106,6 +117,10 @@ MEMORY_TOOL = {
 # Store current persona per server
 current_personas = {}
 current_model = {}
+with open('personas store.json', 'r') as file:
+    current_personas = json.load(file)
+with open('models store.json', 'r') as file:
+    current_model = json.load(file)
 
 executor = ThreadPoolExecutor(max_workers=4)
 
@@ -283,8 +298,10 @@ async def set_persona(ctx, persona: str):
         await ctx.response.send_message(f"Invalid persona! Available options: {available}")
         return
     
-    channel_id = ctx.channel.id
-    current_personas[channel_id] = persona.lower()
+    channel_id = str(ctx.channel.id)
+    current_personas[str(channel_id)] = persona.lower()
+    with open('personas store.json', 'w') as file:
+        json.dump(current_personas, file)
     await ctx.response.send_message(f"Persona set to '{persona}' for this channel!")
 
 # Command to set default persona
@@ -307,6 +324,8 @@ async def set_default_persona(ctx, persona: str):
         
         global defaultPersona
         defaultPersona = persona.lower()
+        with open('defaultPersona.txt', 'w') as file:
+            file.write(defaultPersona)
         await ctx.response.send_message(f"Default persona set to '{defaultPersona}'")
     else:
         await ctx.response.send_message(f"You don't have permission to use this command")
@@ -314,9 +333,9 @@ async def set_default_persona(ctx, persona: str):
 # command to query the persona
 @query.command(name='persona')
 async def query_persona(ctx):
-    channel_id = ctx.channel.id
+    channel_id = str(ctx.channel.id)
     try:
-        await ctx.response.send_message(f"Persona set to '{current_personas[channel_id]}' for this channel!")
+        await ctx.response.send_message(f"Persona set to '{current_personas[str(channel_id)]}' for this channel!")
     except:
         await ctx.response.send_message(f"Persona set to '{defaultPersona}' for this channel!")
 
@@ -334,27 +353,20 @@ async def modelAutocompletion(
 @set.command(name='model')
 @app_commands.autocomplete(model=modelAutocompletion)
 async def set_model(ctx, model: str):
-    current_model[ctx.channel.id] = model.lower()
+    current_model[str(ctx.channel.id)] = model.lower()
+    with open('models store.json', 'w') as file:
+        json.dump(current_model, file)
     await ctx.response.send_message(f"AI Model set to '{model}' for this channel!")
 
 # command to change the default ai model
 @set.command(name='default-model')
-@app_commands.choices(model=[
-    app_commands.Choice(name="Qwen 3 4b", value="qwen3:4b"),
-    app_commands.Choice(name="Qwen 3 8b", value="qwen3:8b"),
-    app_commands.Choice(name="Qwen 3 30b", value="qwen3:30b"),
-    app_commands.Choice(name="Llama 3 8b", value="llama3:8b"),
-    app_commands.Choice(name="Llama 3.2 1b", value="llama3.2:1b"),
-    app_commands.Choice(name="Gemma 3 1b", value="gemma3:1b"),
-    app_commands.Choice(name="GPT OSS 20b", value="gpt-oss:20b"),
-    app_commands.Choice(name="Deepseek R1 1.5b", value="deepseek-r1:1.5b"),
-    app_commands.Choice(name="Deepseek R1 8b", value="deepseek-r1:8b"),
-
-])
+@app_commands.autocomplete(model=modelAutocompletion)
 async def set_default_model(ctx, model: str):
     if ctx.user.id in admin_users:
         global defaultModel
         defaultModel = model.lower()
+        with open('defaultModel.txt', 'w') as file:
+            file.write(defaultModel)
         await ctx.response.send_message(f"Default AI Model set to '{defaultModel}'")
     else:
         await ctx.response.send_message(f"You don't have permission to use this command")
@@ -363,7 +375,7 @@ async def set_default_model(ctx, model: str):
 @query.command(name='model')
 async def query_model(ctx):
     try:
-        await ctx.response.send_message(f"AI Model set to '{current_model[ctx.channel.id]}' for this channel!")
+        await ctx.response.send_message(f"AI Model set to '{current_model[str(ctx.channel.id)]}' for this channel!")
     except:
         await ctx.response.send_message(f"AI Model set to '{defaultModel}' for this channel!")
 
@@ -401,11 +413,11 @@ async def on_message(message):
         print(f"Received message: {message.content} from {message.author}")
         channel_id = message.channel.id
         message_id = message.id
-        persona = current_personas.get(channel_id, defaultPersona)
+        persona = current_personas.get(str(channel_id), defaultPersona)
         persona_prompt = PERSONAS[persona]
         
         async with message.channel.typing():
-            model = current_model.get(channel_id, defaultModel)
+            model = current_model.get(str(channel_id), defaultModel)
             print(f"Using persona: {persona} with model: {model}")
             response = await get_ai_response(message, persona_prompt, message.author.name, model, message.attachments[0].url if message.attachments else None)
             print(f"Response from ai model: {response}")
@@ -425,7 +437,7 @@ async def on_message(message):
 # @bot.command(name='chat')
 # async def chat(ctx, *, message):
 #     guild_id = ctx.guild.id
-#     persona = current_personas.get(guild_id, "default")  # Default to default
+#     persona = current_personas.get(str(guild_id), "default")  # Default to default
 #     persona_prompt = PERSONAS[persona]
     
 #     response = await get_ai_response(message, persona_prompt)
