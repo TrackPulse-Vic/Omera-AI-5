@@ -4,34 +4,47 @@ import requests
 
 
 def getImage(number):
-    photo_url = f"https://railway-photos.xm9g.net/photos/{number}.webp"
+    apiURL = f"https://victorianrailphotos.com/api/photos/{number}"
 
-    URLresponse = requests.head(photo_url)
-    if URLresponse.status_code == 200:
-        url = photo_url
-        # image credits:
-        csvurl = 'https://railway-photos.xm9g.net/credit.csv'
-            
-        search_value = number.strip().upper()
-
-        response = requests.get(csvurl)
-        response.raise_for_status() 
-
-        csv_content = response.content.decode('utf-8')
-        csv_reader = csv.reader(io.StringIO(csv_content))
-
-        photographer = None
-        for row in csv_reader:
-            if row[0].strip().upper() == search_value:
-                photographer = row[1]
-                break
-        if photographer == None:
-            photographer = "Billy Evans"
-    else:
-        url = None
-        photographer = None
+    thummy = 'url'
+    
+    # Make a GET request to fetch the photo data
+    try:
+        response = requests.get(apiURL)
+        if response.status_code != 200:
+            return None, None
         
-    return {
-        "url": url,
-        "photographer": photographer
-    }
+        photos = response.json().get('photos', [])
+        featured_photos = [photo for photo in photos if photo.get('featured') == 1]
+        
+        if featured_photos:
+            photo = featured_photos[-1]
+            photo_url = photo[f'{thummy}']
+            photographer = photo.get('photographer', 'Unknown')
+            url_response = requests.head(photo_url)
+            if url_response.status_code == 200:
+                return {
+                    "url": photo_url,
+                    "photographer": photographer
+                }
+            return None, None
+        
+        if photos:
+            photo = photos[-1]
+            photo_url = photo[f'{thummy}']
+            photographer = photo.get('photographer', 'Unknown')
+            url_response = requests.head(photo_url)
+            if url_response.status_code == 200:
+                return {
+                    "url": photo_url,
+                    "photographer": photographer
+                }
+
+            return None, None
+        
+        return None, None
+    
+    except requests.RequestException:
+        return None, None
+        
+    
